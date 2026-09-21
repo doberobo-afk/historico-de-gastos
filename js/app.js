@@ -476,8 +476,7 @@ document.getElementById("formCF").addEventListener("submit", (e) => {
     VALOR: parseFloat(document.getElementById("cfValor").value) || 0,
     DISCRIMINACAO: document.getElementById("cfDiscriminacao").value,
     DATA: dataBr,
-    VENCIMENTO:
-      document.getElementById("cfVencimento").value || mesDaDataBr(dataBr),
+    VENCIMENTO: document.getElementById("cfVencimento").value,
     ANO: parseInt(document.getElementById("cfAno").value, 10),
     ENTRADA_SAIDA: document.getElementById("cfEntradaSaida").value,
     OBSERVACAO:
