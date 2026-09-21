@@ -93,6 +93,13 @@ function dataISOParaBr(iso) {
   return `${d}/${m}/${a}`;
 }
 
+function dataCFParaBr(valor) {
+  const texto = String(valor || "").trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(texto)) return texto;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return dataISOParaBr(texto);
+  return "";
+}
+
 function mesDaDataBr(dataBr) {
   if (!dataBr) return "";
   const [, m] = dataBr.split("/");
@@ -469,8 +476,15 @@ function renderControleFinanceiro() {
 document.getElementById("formCF").addEventListener("submit", (e) => {
   e.preventDefault();
   if (!STATE.pronto) return; // dados ainda carregando
-  const dataISO = document.getElementById("cfData").value;
-  const dataBr = dataISOParaBr(dataISO);
+  const dataBr = dataCFParaBr(document.getElementById("cfData").value);
+  if (!dataBr) {
+    document
+      .getElementById("cfData")
+      .setCustomValidity("Informe a data no formato DD/MM/AAAA.");
+    document.getElementById("cfData").reportValidity();
+    return;
+  }
+  document.getElementById("cfData").setCustomValidity("");
   const novo = {
     TIPO: document.getElementById("cfTipo").value,
     VALOR: parseFloat(document.getElementById("cfValor").value) || 0,
@@ -509,7 +523,7 @@ function iniciarEdicaoCF(idx) {
   document.getElementById("cfTipo").value = row.TIPO || "";
   document.getElementById("cfValor").value = num(row.VALOR);
   document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
-  document.getElementById("cfData").value = dataBrParaISO(row.DATA);
+  document.getElementById("cfData").value = row.DATA || "";
   const vencimento = String(row.VENCIMENTO || mesDaDataBr(row.DATA) || "")
     .trim()
     .toUpperCase();
