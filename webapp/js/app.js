@@ -89,6 +89,7 @@ function dataBrParaISO(dataBr) {
 function dataISOParaBr(iso) {
   // "2026-07-31" -> "31/07/2026"
   if (!iso) return "";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(iso)) return iso;
   const [a, m, d] = iso.split("-");
   return `${d}/${m}/${a}`;
 }

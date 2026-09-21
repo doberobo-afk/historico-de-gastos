@@ -7,7 +7,7 @@
 //   • navegação -> rede primeiro, caindo para a versão em cache (offline);
 //   • /api/*    -> sempre rede (dados financeiros não podem ficar velhos).
 // ==========================================================================
-const VERSAO = "hg-v2";
+const VERSAO = "hg-v3";
 const CACHE = `controle-financeiro-${VERSAO}`;
 
 const SHELL = [
