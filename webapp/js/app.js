@@ -511,8 +511,15 @@ function iniciarEdicaoCF(idx) {
   document.getElementById("cfValor").value = num(row.VALOR);
   document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
   document.getElementById("cfData").value = dataBrParaISO(row.DATA);
-  document.getElementById("cfVencimento").value =
-    row.VENCIMENTO || mesDaDataBr(row.DATA);
+  const vencimento = String(row.VENCIMENTO || mesDaDataBr(row.DATA) || "")
+    .trim()
+    .toUpperCase();
+  const vencimentoEl = document.getElementById("cfVencimento");
+  vencimentoEl.value = Array.from(vencimentoEl.options).some(
+    (option) => option.value === vencimento,
+  )
+    ? vencimento
+    : "";
   document.getElementById("cfAno").value =
     row.ANO || anoDaDataBr(row.DATA) || "";
   document.getElementById("cfObservacao").value = row.OBSERVACAO || "";
