@@ -505,7 +505,7 @@ function iniciarEdicaoCF(idx) {
   const form = document.getElementById("formCF");
   document.getElementById("cfEntradaSaida").value =
     row.ENTRADA_SAIDA || "DESPESA";
-  atualizarTipoCF();
+  document.getElementById("cfEntradaSaida").dispatchEvent(new Event("change"));
   document.getElementById("cfTipo").value = row.TIPO || "";
   document.getElementById("cfValor").value = num(row.VALOR);
   document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
@@ -536,7 +536,7 @@ function limparEdicaoCF() {
   form.querySelector('button[type="submit"]').textContent =
     "➕ Adicionar Lançamento";
   document.getElementById("cfCancelarEdicao")?.remove();
-  atualizarTipoCF();
+  document.getElementById("cfEntradaSaida").dispatchEvent(new Event("change"));
 }
 
 ["cfFiltroAno", "cfFiltroMes", "cfFiltroTipo", "cfFiltroTexto"].forEach(
