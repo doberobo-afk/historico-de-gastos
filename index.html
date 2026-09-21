@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Controle Financeiro</title>
+<meta name="description" content="Controle financeiro pessoal: resumo mensal, lançamentos, dívidas parceladas e planejamento orçado x realizado." />
+<meta name="theme-color" content="#071025" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Controle Financeiro" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+<link rel="stylesheet" href="css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+
+<header class="app-header">
+  <div class="header-left">
+    <h1>💰 Controle Financeiro</h1>
+    <div class="search">
+      <input type="search" id="topSearch" placeholder="Pesquisar transações..." autocomplete="off" />
+      <div id="topSearchResults" class="search-dropdown" style="display:none;"></div>
+    </div>
+  </div>
+  <div class="top-right-actions">
+    <span id="syncStatus" class="sync-status offline" title="Status da sincronização">💾 Local</span>
+    <button class="icon-btn" id="themeToggle" title="Alternar tema claro/escuro">🌗</button>
+    <button class="btn secondary" id="btnExportar">⬇️ Exportar backup</button>
+    <button class="btn danger" id="btnResetar">♻️ Restaurar dados de exemplo</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="resumo">📊 Resumo</button>
+  <button class="tab-btn" data-tab="controle-financeiro">💳 Controle Financeiro</button>
+  <button class="tab-btn" data-tab="controle-dividas">📄 Controle de Dívidas</button>
+  <button class="tab-btn" data-tab="cadastros">🗂️ Cadastros</button>
+</nav>
+
+<main>
+  <div class="dashboard-grid">
+    <div class="left-col">
+
+  <!-- ==================== RESUMO ==================== -->
+  <section id="resumo" class="panel active">
+    <h2>Resumo de Controle Financeiro</h2>
+
+    <div class="toolbar">
+      <label>Ano
+        <select id="resumoAno"></select>
+      </label>
+      <label>Mês
+        <select id="resumoMes"></select>
+      </label>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="label">Receitas</div><div class="value" id="cardReceitas">R$ 0,00</div></div>
+      <div class="card"><div class="label">Gastos Variáveis</div><div class="value" id="cardVariaveis">R$ 0,00</div></div>
+      <div class="card"><div class="label">Gastos Fixos / Cartões</div><div class="value" id="cardFixos">R$ 0,00</div></div>
+      <div class="card" id="cardSaldoWrap"><div class="label">Saldo do Mês</div><div class="value" id="cardSaldo">R$ 0,00</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="chart-box">
+        <h3>Receitas x Despesas (12 meses)</h3>
+        <canvas id="chartAnual" height="220"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Gastos Variáveis por Categoria (mês selecionado)</h3>
+        <canvas id="chartCategorias" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <h3>Receitas</h3>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+            <tbody id="tabelaReceitas"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Gastos Fixos e Cartões</h3>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Categoria</th><th>Valor</th></tr></thead>
+            <tbody id="tabelaFixos"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:24px;">Planejamento (Gastos Variáveis) — Orçado x Realizado</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Categoria</th><th>Orçado</th><th>Realizado</th><th>Diferença</th><th class="actions-col" style="text-align:right;">Ações</th></tr></thead>
+        <tbody id="tabelaPlanejamento"></tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:24px;">Visão Anual</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Mês</th><th>Receita</th><th>Despesas</th><th>Saldo</th></tr></thead>
+        <tbody id="tabelaAnual"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ==================== CONTROLE FINANCEIRO ==================== -->
+  <section id="controle-financeiro" class="panel">
+    <h2>Controle Financeiro</h2>
+
+    <div class="import-box">
+      <h3>📥 Importar CSV (extrato bancário ou fatura de cartão)</h3>
+      <div class="toolbar">
+        <input type="file" id="cfImportFile" accept=".csv" />
+        <button class="btn" id="cfImportBtn">Importar</button>
+        <span id="cfImportStatus" class="hint"></span>
+      </div>
+      <p class="hint">Detecta automaticamente o formato: extrato do Banco do Brasil (colunas Lançamento/Tipo Lançamento) ou fatura de cartão de crédito (colunas Descrição/Categoria).</p>
+    </div>
+
+    <form class="form-inline" id="formCF">
+      <label>Entrada/Saída
+        <select id="cfEntradaSaida" required>
+          <option value="DESPESA">DESPESA</option>
+          <option value="RECEITA">RECEITA</option>
+        </select>
+      </label>
+      <label>Tipo
+        <select id="cfTipo" required></select>
+      </label>
+      <label>Valor
+        <input type="number" step="0.01" id="cfValor" required />
+      </label>
+      <label class="full">Discriminação
+        <input type="text" id="cfDiscriminacao" required />
+      </label>
+      <label>Data
+        <input type="date" id="cfData" required />
+      </label>
+      <label>Ano
+        <input type="number" id="cfAno" required />
+      </label>
+      <label>Observação
+        <input type="text" id="cfObservacao" placeholder="ex: GASTOS VARIÁVEIS" />
+      </label>
+      <div class="full" style="align-self:end;">
+        <button type="submit" class="btn full">➕ Adicionar Lançamento</button>
+      </div>
+    </form>
+
+    <div class="toolbar">
+      <label>Filtrar Ano
+        <select id="cfFiltroAno"><option value="">Todos</option></select>
+      </label>
+      <label>Filtrar Mês
+        <select id="cfFiltroMes"><option value="">Todos</option></select>
+      </label>
+      <label>Filtrar Tipo
+        <input type="text" id="cfFiltroTipo" placeholder="Buscar tipo..." />
+      </label>
+      <label>Filtrar Texto
+        <input type="text" id="cfFiltroTexto" placeholder="Buscar descrição..." />
+      </label>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th><th>Valor</th><th>Discriminação</th><th>Data</th>
+            <th>Vencimento</th><th>Ano</th><th>Entrada/Saída</th><th>Observação</th><th class="actions-col">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tabelaCF"></tbody>
+        <tfoot>
+          <tr class="footer-total">
+            <td colspan="1">Total (filtro atual)</td>
+            <td id="cfTotalValor">R$ 0,00</td>
+            <td colspan="7"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="pager" id="cfPager"></div>
+  </section>
+  <section id="controle-dividas" class="panel">
+    <h2>Controle de Dívidas</h2>
+
+    <form class="form-inline" id="formCD">
+      <label>Tipo
+        <select id="cdTipo" required></select>
+      </label>
+      <label class="full">Discriminação
+        <input type="text" id="cdDiscriminacao" required />
+      </label>
+      <label>Valor (por parcela)
+        <input type="number" step="0.01" id="cdValor" required
+          title="Valor de cada parcela. O total aparece no resumo abaixo do formulário." />
+      </label>
+      <label>Parcela Nº
+        <input type="number" id="cdParcelas" value="1" min="1"
+          title="Número da parcela que está sendo lançada (1 para uma compra nova)" />
+      </label>
+      <label>Qtd. Parcelas
+        <input type="number" id="cdQtdParcelas" value="1" min="1"
+          title="Quantidade total de parcelas da compra" />
+      </label>
+      <label>Data
+        <input type="date" id="cdData" required
+          title="Data da compra. A 1ª parcela é faturada no mês seguinte." />
+      </label>
+      <label>Ano da Fatura
+        <input type="number" id="cdAno" readonly
+          title="Calculado automaticamente: ano da fatura (mês seguinte à data)" />
+      </label>
+      <label>Condição
+        <select id="cdCondicao">
+          <option value="À PAGAR">À PAGAR</option>
+          <option value="PAGO">PAGO</option>
+          <option value="RECEBIDO">RECEBIDO</option>
+          <option value="À RECEBER">À RECEBER</option>
+        </select>
+      </label>
+      <label>Observação
+        <select id="cdObservacao">
+          <option value="GASTOS FIXOS">GASTOS FIXOS</option>
+          <option value="PARCELADOS">PARCELADOS</option>
+          <option value="RECEBIDO">RECEBIDO</option>
+          <option value="À RECEBER">À RECEBER</option>
+        </select>
+      </label>
+      <div class="full" style="align-self:end;">
+        <button type="submit" class="btn full">➕ Adicionar Dívida</button>
+      </div>
+      <p class="hint full" id="cdParcelasInfo" aria-live="polite"></p>
+    </form>
+
+    <div class="toolbar">
+      <label>Filtrar Ano
+        <select id="cdFiltroAno"><option value="">Todos</option></select>
+      </label>
+      <label>Filtrar Mês
+        <select id="cdFiltroMes"><option value="">Todos</option></select>
+      </label>
+      <label>Filtrar Condição
+        <select id="cdFiltroCondicao">
+          <option value="">Todas</option>
+          <option value="PAGO">PAGO</option>
+          <option value="À PAGAR">À PAGAR</option>
+          <option value="RECEBIDO">RECEBIDO</option>
+          <option value="À RECEBER">À RECEBER</option>
+        </select>
+      </label>
+      <label>Filtrar Observação
+        <select id="cdFiltroObservacao">
+          <option value="">Todas</option>
+          <option value="GASTOS FIXOS">GASTOS FIXOS</option>
+          <option value="PARCELADOS">PARCELADOS</option>
+          <option value="RECEBIDO">RECEBIDO</option>
+          <option value="À RECEBER">À RECEBER</option>
+        </select>
+      </label>
+      <label>Filtrar Tipo
+        <input type="text" id="cdFiltroTipo" placeholder="Buscar tipo..." />
+      </label>
+      <label>Filtrar Texto
+        <input type="text" id="cdFiltroTexto" placeholder="Buscar descrição..." />
+      </label>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th><th>Discriminação</th><th>Valor</th><th>Parcela</th>
+            <th>Data</th><th>Vencimento</th><th>Ano</th><th>Condição</th><th>Observação</th><th class="actions-col">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tabelaCD"></tbody>
+        <tfoot>
+          <tr class="footer-total">
+            <td colspan="2">Total (filtro atual)</td>
+            <td id="cdTotalValor">R$ 0,00</td>
+            <td colspan="7"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="pager" id="cdPager"></div>
+  </section>
+
+  <!-- ==================== CADASTROS ==================== -->
+  <section id="cadastros" class="panel">
+    <h2>Cadastros Gerais</h2>
+    <p class="hint">Estas listas alimentam os menus suspensos (dropdowns) das outras abas.</p>
+
+    <div class="cadastro-lists">
+      <div class="cadastro-list">
+        <h3>Gastos Variáveis</h3>
+        <ul id="listaGastosVariaveis"></ul>
+        <div class="add-row">
+          <input type="text" id="novoGastoVariavel" placeholder="Nova categoria..." />
+          <button class="btn" data-lista="gastos_variaveis">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="cadastro-list">
+        <h3>Fixos e Parcelados (Cartões/Contas)</h3>
+        <ul id="listaFixosParcelados"></ul>
+        <div class="add-row">
+          <input type="text" id="novoFixoParcelado" placeholder="Novo item..." />
+          <button class="btn" data-lista="fixos_parcelados">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="cadastro-list">
+        <h3>Receitas e Variáveis</h3>
+        <ul id="listaReceitasVariaveis"></ul>
+        <div class="add-row">
+          <input type="text" id="novaReceitaVariavel" placeholder="Novo item..." />
+          <button class="btn" data-lista="receitas_variaveis">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="cadastro-list">
+        <h3>Categorias de Receita</h3>
+        <ul id="listaReceitas"></ul>
+        <div class="add-row">
+          <input type="text" id="novaReceita" placeholder="Nova categoria..." />
+          <button class="btn" data-lista="receitas">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="cadastro-list">
+        <h3>Cartões de Crédito</h3>
+        <ul id="listaCartoes"></ul>
+        <div class="add-row">
+          <input type="text" id="novoCartao" placeholder="Novo cartão..." />
+          <button class="btn" data-lista="cartoes_credito">Adicionar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+    </div>
+  </div>
+</main>
+
+<script src="js/store.js"></script>
+<script src="js/dados_iniciais.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
+
+
