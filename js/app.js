@@ -1854,9 +1854,7 @@ function drawDonutChart(canvasId, labels, valores) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
   const { w, h } = limparCanvas(ctx, canvas);
-  const textoTema =
-    getComputedStyle(document.body).getPropertyValue("--texto").trim() ||
-    "#22262e";
+  const corLegenda = "#f2c95a";
 
   const total = valores.reduce((a, b) => a + b, 0);
   const cx = w * 0.32,
@@ -1925,7 +1923,7 @@ function drawDonutChart(canvasId, labels, valores) {
     ctx.fillStyle = cor;
     ctx.fill();
     // text
-    ctx.fillStyle = textoTema;
+    ctx.fillStyle = corLegenda;
     ctx.textAlign = "left";
     const pct = ((valores[i] / total) * 100).toFixed(0);
     ctx.fillText(`${label} — ${pct}%`, w * 0.62 + 18, ly + 9);
