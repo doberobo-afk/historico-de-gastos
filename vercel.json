@@ -1,15 +1,15 @@
 {
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
   "functions": {
     "api/extrair.py": {
-      "includeFiles": "extrator_fatura.py"
+      "includeFiles": [
+        "extrator_fatura.py"
+      ]
     }
-  },
-  "rewrites": [
-    { "source": "/css/:path*", "destination": "/webapp/css/:path*" },
-    { "source": "/js/:path*", "destination": "/webapp/js/:path*" },
-    { "source": "/icons/:path*", "destination": "/webapp/icons/:path*" },
-    { "source": "/manifest.json", "destination": "/webapp/manifest.json" },
-    { "source": "/sw.js", "destination": "/webapp/sw.js" },
-    { "source": "/(.*)", "destination": "/webapp/controleFinanceiro.html" }
-  ]
+  }
 }
