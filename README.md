@@ -15,22 +15,22 @@ Sistema automático para carregar dados bancários (CSV) diretamente na planilha
 - **`config_automacao.ini`** - Arquivo de configurações
 - **`executar_uma_vez.bat`** - Script para executar uma única vez (Windows)
 - **`executar_automatico.bat`** - Script para execução contínua (Windows)
-- **`webapp/`** - Sistema web (HTML/CSS/JS) que replica as abas RESUMO, CONTROLE FINANCEIRO, CONTROLE DE DÍVIDAS e CADASTROS da planilha
+- **`index.html`**, **`css/`**, **`js/`** e **`icons/`** - Sistema web (HTML/CSS/JS) que replica as abas RESUMO, CONTROLE FINANCEIRO, CONTROLE DE DÍVIDAS e CADASTROS da planilha
 
 ---
 
 ## 🌐 Sistema Web (réplica da planilha em HTML)
 
-Dentro da pasta `webapp/` há uma versão totalmente funcional em HTML/CSS/JS das 4 principais abas da planilha, que roda direto no navegador sem precisar de Excel:
+Na raiz do projeto há uma versão totalmente funcional em HTML/CSS/JS das 4 principais abas da planilha, que roda direto no navegador sem precisar de Excel:
 
 ```bash
 # Basta abrir o arquivo no navegador (duplo clique)
-webapp/index.html
+index.html
 ```
 
 **O que ela faz:**
 
-- Carrega automaticamente os dados atuais da planilha (`webapp/js/dados_iniciais.js`) na primeira execução
+- Carrega automaticamente os dados iniciais da planilha (`js/dados_iniciais.js`) na primeira execução
 - Salva todas as alterações no `localStorage` do navegador (não precisa de servidor/backend)
 - **Resumo**: cards de Receitas, Gastos Variáveis, Gastos Fixos/Cartões e Saldo, por Ano/Mês; tabela de planejamento (orçado x realizado) e visão anual dos 12 meses
 - **Controle Financeiro**: cadastro, listagem, filtros (ano/mês/tipo/texto) e exclusão de lançamentos

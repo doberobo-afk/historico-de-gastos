@@ -13,11 +13,8 @@ const fs = require("fs");
 const path = require("path");
 
 const RAIZ = path.dirname(__dirname);
-const CSS = process.argv[2] || path.join(RAIZ, "webapp", "css", "style.css");
-const FONTES = [
-  path.join(RAIZ, "webapp", "controleFinanceiro.html"),
-  path.join(RAIZ, "webapp", "js", "app.js"),
-];
+const CSS = process.argv[2] || path.join(RAIZ, "css", "style.css");
+const FONTES = [path.join(RAIZ, "index.html"), path.join(RAIZ, "js", "app.js")];
 
 // Classes aplicadas dinamicamente pelo JS (não aparecem literalmente no markup)
 const DINAMICAS = [
@@ -64,7 +61,9 @@ for (const fonte of FONTES) {
       .filter((c) => /^[a-zA-Z][\w-]*$/.test(c))
       .forEach((c) => classesUsadas.add(c));
   }
-  for (const m of texto.matchAll(/classList\.(?:add|remove|toggle)\("([^"]+)"/g)) {
+  for (const m of texto.matchAll(
+    /classList\.(?:add|remove|toggle)\("([^"]+)"/g,
+  )) {
     classesUsadas.add(m[1]);
   }
   // atribuições via propriedade: element.className = "minha-classe outra"

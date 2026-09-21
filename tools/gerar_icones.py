@@ -1,4 +1,4 @@
-"""Gera os ícones do PWA (webapp/icons/*.png) — sem dependências além do Pillow.
+"""Gera os ícones do PWA (icons/*.png) — sem dependências além do Pillow.
 
 Uso:
     python tools/gerar_icones.py
@@ -10,7 +10,7 @@ import os
 from PIL import Image, ImageDraw
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DESTINO = os.path.join(RAIZ, "webapp", "icons")
+DESTINO = os.path.join(RAIZ, "icons")
 
 # Paleta do app (mesma do CSS: --db-accent-start / --db-accent-end / --db-bg-1)
 LARANJA = (255, 107, 61)
