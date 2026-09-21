@@ -1,0 +1,5 @@
+# Dependências para rodar tudo localmente (automação do Excel + extração de PDF)
+# Instale com: pip install -r requirements-local.txt
+pdfplumber==0.11.10
+pandas>=2.2
+xlwings>=0.33

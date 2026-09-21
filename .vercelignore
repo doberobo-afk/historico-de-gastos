@@ -1,0 +1,17 @@
+# Arquivos que não precisam ir para o deploy (protegem dados pessoais)
+logs/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pdf
+*.xlsm
+*.xls
+*.csv
+.env
+.env.local
+.git/
+.github/
+node_modules/
+.vercel/
+docs/

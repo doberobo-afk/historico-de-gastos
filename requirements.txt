@@ -1,0 +1,3 @@
+# Dependências do backend serverless (Vercel) e do extrator de fatura
+# Python 3.12+ — instale com: pip install -r requirements.txt
+pdfplumber==0.11.10

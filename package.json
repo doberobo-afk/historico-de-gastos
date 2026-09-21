@@ -1,0 +1,9 @@
+{
+  "name": "historico-de-gastos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Controle financeiro pessoal (PWA) com sincronização no Supabase e extração de faturas em PDF",
+  "engines": {
+    "node": ">=18"
+  }
+}

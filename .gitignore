@@ -1,0 +1,32 @@
+# -------------------------
+# Dados pessoais (NUNCA publicar)
+# -------------------------
+logs/
+*.pdf
+*.xlsm
+*.xls
+*.csv
+fatura_extraida*.csv
+dados_iniciais_backup*.js
+
+# -------------------------
+# Ambiente / dependências
+# -------------------------
+.env
+.env.local
+.vercel
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+
+# -------------------------
+# Sistema operacional / editores
+# -------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.env*
