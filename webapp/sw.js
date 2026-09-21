@@ -7,7 +7,7 @@
 //   • navegação -> rede primeiro, caindo para a versão em cache (offline);
 //   • /api/*    -> sempre rede (dados financeiros não podem ficar velhos).
 // ==========================================================================
-const VERSAO = "hg-v1";
+const VERSAO = "hg-v2";
 const CACHE = `controle-financeiro-${VERSAO}`;
 
 const SHELL = [
@@ -57,7 +57,8 @@ self.addEventListener("fetch", (evento) => {
   const requisicao = evento.request;
   const url = new URL(requisicao.url);
 
-  if (requisicao.method !== "GET" || url.origin !== self.location.origin) return;
+  if (requisicao.method !== "GET" || url.origin !== self.location.origin)
+    return;
 
   // Dados financeiros: sempre da rede
   if (url.pathname.startsWith("/api/")) {
@@ -88,7 +89,9 @@ self.addEventListener("fetch", (evento) => {
         .catch(() =>
           caches
             .match(requisicao)
-            .then((emCache) => emCache || caches.match("./controleFinanceiro.html")),
+            .then(
+              (emCache) => emCache || caches.match("./controleFinanceiro.html"),
+            ),
         ),
     );
     return;
