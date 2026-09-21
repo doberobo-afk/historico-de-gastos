@@ -46,28 +46,34 @@ function salvar(chave, valor) {
 // ---------------------------------------------------------------------
 // Utilitários
 // ---------------------------------------------------------------------
-const safeParse = (window.HGStore && HGStore.safeParse) || function (t, p) {
-  try {
-    return t ? JSON.parse(t) : p;
-  } catch (e) {
-    return p;
-  }
-};
+const safeParse =
+  (window.HGStore && HGStore.safeParse) ||
+  function (t, p) {
+    try {
+      return t ? JSON.parse(t) : p;
+    } catch (e) {
+      return p;
+    }
+  };
 
-const esc = (window.HGStore && HGStore.esc) || function (v) {
-  if (v === null || v === undefined) return "";
-  return String(v)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
+const esc =
+  (window.HGStore && HGStore.esc) ||
+  function (v) {
+    if (v === null || v === undefined) return "";
+    return String(v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  };
 
-const num = (window.HGStore && HGStore.num) || function (v) {
-  const n = Number(v);
-  return isFinite(n) ? n : 0;
-};
+const num =
+  (window.HGStore && HGStore.num) ||
+  function (v) {
+    const n = Number(v);
+    return isFinite(n) ? n : 0;
+  };
 
 function brMoeda(v) {
   return num(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -505,9 +511,7 @@ function filtrosCD() {
     condicao: document.getElementById("cdFiltroCondicao").value,
     observacao: filtroObsEl ? filtroObsEl.value : "",
     tipo: document.getElementById("cdFiltroTipo").value.trim().toLowerCase(),
-    texto: filtroTextoEl
-      ? filtroTextoEl.value.trim().toLowerCase()
-      : "",
+    texto: filtroTextoEl ? filtroTextoEl.value.trim().toLowerCase() : "",
   };
 }
 
@@ -608,8 +612,7 @@ function renderControleDividas() {
     // (sem depender da ausência de zebra nas linhas da tabela)
     if (isUltimaParcela) tr.classList.add("ultima-parcela");
 
-    const parcelaCell =
-      `${esc(parcelaLeft)}/${esc(parcelaRight)}${isUltimaParcela ? " ⭐" : ""}`;
+    const parcelaCell = `${esc(parcelaLeft)}/${esc(parcelaRight)}${isUltimaParcela ? " ⭐" : ""}`;
 
     tr.innerHTML = `
       <td>${esc(row.TIPO)}</td>
@@ -799,14 +802,17 @@ function faturaDe(dataBr) {
 // Lança as parcelas seguintes automaticamente, exceto para "GASTOS FIXOS"
 // (contas de valor variável, lançadas mês a mês com o valor real).
 function gerarParcelasAutomaticas(observacao, qtdParcelas) {
-  const obs = String(observacao || "").trim().toUpperCase();
+  const obs = String(observacao || "")
+    .trim()
+    .toUpperCase();
   return qtdParcelas > 1 && obs !== "GASTOS FIXOS";
 }
 
 // Parcelas ainda não faturadas permanecem em aberto
 function condicaoParcelasFuturas(condicao, observacao) {
   const texto = `${condicao || ""} ${observacao || ""}`.toUpperCase();
-  if (texto.includes("RECEBER") || texto.includes("RECEBIDO")) return "À RECEBER";
+  if (texto.includes("RECEBER") || texto.includes("RECEBIDO"))
+    return "À RECEBER";
   return "À PAGAR";
 }
 
@@ -942,18 +948,23 @@ document.getElementById("formCD").addEventListener("submit", (e) => {
 });
 
 // Atualiza o ano da fatura e o resumo do parcelamento enquanto o usuário digita
-["cdData", "cdValor", "cdParcelas", "cdQtdParcelas", "cdCondicao", "cdObservacao"].forEach(
-  (id) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const atualizar = () => {
-      sincronizarAnoFaturaCD();
-      atualizarPreviewParcelasCD();
-    };
-    el.addEventListener("input", atualizar);
-    el.addEventListener("change", atualizar);
-  },
-);
+[
+  "cdData",
+  "cdValor",
+  "cdParcelas",
+  "cdQtdParcelas",
+  "cdCondicao",
+  "cdObservacao",
+].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const atualizar = () => {
+    sincronizarAnoFaturaCD();
+    atualizarPreviewParcelasCD();
+  };
+  el.addEventListener("input", atualizar);
+  el.addEventListener("change", atualizar);
+});
 
 [
   "cdFiltroAno",
@@ -1832,7 +1843,7 @@ function drawDonutChart(canvasId, labels, valores) {
     ctx.fillStyle = cor;
     ctx.fill();
     // text
-    ctx.fillStyle = "#071025";
+    ctx.fillStyle = "#e9eef8";
     ctx.textAlign = "left";
     const pct = ((valores[i] / total) * 100).toFixed(0);
     ctx.fillText(`${label} — ${pct}%`, w * 0.62 + 18, ly + 9);
@@ -2160,7 +2171,9 @@ function renderStatusSync(s) {
   if (!el) return;
   const nuvem = s.modo === "nuvem";
   el.classList.remove("online", "offline", "sincronizando");
-  el.classList.add(nuvem ? (s.pendente ? "sincronizando" : "online") : "offline");
+  el.classList.add(
+    nuvem ? (s.pendente ? "sincronizando" : "online") : "offline",
+  );
   el.textContent = nuvem
     ? s.pendente
       ? "☁️ Sincronizando…"
@@ -2180,7 +2193,9 @@ if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("sw.js")
-      .catch((e) => console.warn("[PWA] service worker não registrado:", e.message));
+      .catch((e) =>
+        console.warn("[PWA] service worker não registrado:", e.message),
+      );
   });
 }
 

@@ -267,7 +267,13 @@ tbody tr:hover { background: var(--linha-hover); }
   padding: 4px 6px; font-size: 1rem; background: none; border: none;
   border-radius: var(--raio-sm); cursor: pointer; transition: background 0.12s ease;
 }
+.actions-col .btn {
+  padding: 6px 10px; font-size: 0.8rem; color: #1c1c1c;
+  background: linear-gradient(90deg, var(--dourado-claro), var(--dourado));
+}
+.actions-col .btn.secondary { color: var(--texto); background: rgba(255, 255, 255, 0.1); }
 .actions-col button:hover { background: rgba(255, 255, 255, 0.12); }
+.actions-col .btn:hover { background: linear-gradient(90deg, var(--dourado-claro), var(--dourado)); }
 body:not(.dark-theme) .actions-col button:hover { background: rgba(0, 0, 0, 0.05); }
 
 .footer-total td { font-weight: 800; color: var(--destaque-texto); background: var(--dourado); }
