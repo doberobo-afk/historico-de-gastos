@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/extrair.py": {
-      "includeFiles": ["extrator_fatura.py", "api/**"]
-    }
-  }
-}
