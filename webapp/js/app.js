@@ -46,28 +46,34 @@ function salvar(chave, valor) {
 // ---------------------------------------------------------------------
 // Utilitários
 // ---------------------------------------------------------------------
-const safeParse = (window.HGStore && HGStore.safeParse) || function (t, p) {
-  try {
-    return t ? JSON.parse(t) : p;
-  } catch (e) {
-    return p;
-  }
-};
+const safeParse =
+  (window.HGStore && HGStore.safeParse) ||
+  function (t, p) {
+    try {
+      return t ? JSON.parse(t) : p;
+    } catch (e) {
+      return p;
+    }
+  };
 
-const esc = (window.HGStore && HGStore.esc) || function (v) {
-  if (v === null || v === undefined) return "";
-  return String(v)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
+const esc =
+  (window.HGStore && HGStore.esc) ||
+  function (v) {
+    if (v === null || v === undefined) return "";
+    return String(v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  };
 
-const num = (window.HGStore && HGStore.num) || function (v) {
-  const n = Number(v);
-  return isFinite(n) ? n : 0;
-};
+const num =
+  (window.HGStore && HGStore.num) ||
+  function (v) {
+    const n = Number(v);
+    return isFinite(n) ? n : 0;
+  };
 
 function brMoeda(v) {
   return num(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -307,6 +313,7 @@ function filtrosCF() {
 }
 
 let assinaturaFiltros = { cf: "", cd: "" };
+let indiceCFEditando = null;
 
 // Paginação reutilizável (Controle Financeiro / Controle de Dívidas)
 function renderPager(idContainer, total, paginaAtual, irParaPagina) {
@@ -405,12 +412,18 @@ function renderControleFinanceiro() {
       <td><span class="badge ${badgeClass}">${esc(row.ENTRADA_SAIDA)}</span></td>
       <td>${esc(row.OBSERVACAO)}</td>
       <td class="actions-col">
+        <button title="Editar" data-edit-cf="${esc(idx)}">✏️</button>
         <button title="Excluir" data-del-cf="${esc(idx)}">🗑️</button>
       </td>`;
     tbody.appendChild(tr);
   });
 
-  // Exclusão (o índice é o original, não o da página)
+  // Edição e exclusão usam o índice original, não o da página.
+  tbody.querySelectorAll("[data-edit-cf]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      iniciarEdicaoCF(Number(btn.dataset.editCf)),
+    );
+  });
   tbody.querySelectorAll("[data-del-cf]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = Number(btn.dataset.delCf);
@@ -469,14 +482,62 @@ document.getElementById("formCF").addEventListener("submit", (e) => {
     OBSERVACAO:
       document.getElementById("cfObservacao").value || "GASTOS VARIÁVEIS",
   };
-  STATE.cf.unshift(novo);
+  if (indiceCFEditando === null) {
+    STATE.cf.unshift(novo);
+  } else if (STATE.cf[indiceCFEditando]) {
+    STATE.cf[indiceCFEditando] = {
+      ...STATE.cf[indiceCFEditando],
+      ...novo,
+    };
+  }
   salvar(LS_KEYS.cf, STATE.cf);
-  e.target.reset();
+  limparEdicaoCF();
   popularSelectsAnoMes();
   popularDropdownsCadastro();
   renderControleFinanceiro();
   renderResumo();
 });
+
+function iniciarEdicaoCF(idx) {
+  const row = STATE.cf[idx];
+  if (!row) return;
+  indiceCFEditando = idx;
+  const form = document.getElementById("formCF");
+  document.getElementById("cfEntradaSaida").value =
+    row.ENTRADA_SAIDA || "DESPESA";
+  atualizarTipoCF();
+  document.getElementById("cfTipo").value = row.TIPO || "";
+  document.getElementById("cfValor").value = num(row.VALOR);
+  document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
+  document.getElementById("cfData").value = dataBrParaISO(row.DATA);
+  document.getElementById("cfAno").value =
+    row.ANO || anoDaDataBr(row.DATA) || "";
+  document.getElementById("cfObservacao").value = row.OBSERVACAO || "";
+  form.querySelector('button[type="submit"]').textContent =
+    "💾 Salvar alteração";
+  let cancelar = document.getElementById("cfCancelarEdicao");
+  if (!cancelar) {
+    const submitButton = form.querySelector('button[type="submit"]');
+    cancelar = document.createElement("button");
+    cancelar.type = "button";
+    cancelar.id = "cfCancelarEdicao";
+    cancelar.className = "btn secondary full";
+    cancelar.textContent = "Cancelar edição";
+    cancelar.addEventListener("click", limparEdicaoCF);
+    submitButton.parentElement.appendChild(cancelar);
+  }
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function limparEdicaoCF() {
+  indiceCFEditando = null;
+  const form = document.getElementById("formCF");
+  form.reset();
+  form.querySelector('button[type="submit"]').textContent =
+    "➕ Adicionar Lançamento";
+  document.getElementById("cfCancelarEdicao")?.remove();
+  atualizarTipoCF();
+}
 
 ["cfFiltroAno", "cfFiltroMes", "cfFiltroTipo", "cfFiltroTexto"].forEach(
   (id) => {
@@ -505,9 +566,7 @@ function filtrosCD() {
     condicao: document.getElementById("cdFiltroCondicao").value,
     observacao: filtroObsEl ? filtroObsEl.value : "",
     tipo: document.getElementById("cdFiltroTipo").value.trim().toLowerCase(),
-    texto: filtroTextoEl
-      ? filtroTextoEl.value.trim().toLowerCase()
-      : "",
+    texto: filtroTextoEl ? filtroTextoEl.value.trim().toLowerCase() : "",
   };
 }
 
@@ -608,8 +667,7 @@ function renderControleDividas() {
     // (sem depender da ausência de zebra nas linhas da tabela)
     if (isUltimaParcela) tr.classList.add("ultima-parcela");
 
-    const parcelaCell =
-      `${esc(parcelaLeft)}/${esc(parcelaRight)}${isUltimaParcela ? " ⭐" : ""}`;
+    const parcelaCell = `${esc(parcelaLeft)}/${esc(parcelaRight)}${isUltimaParcela ? " ⭐" : ""}`;
 
     tr.innerHTML = `
       <td>${esc(row.TIPO)}</td>
@@ -799,14 +857,17 @@ function faturaDe(dataBr) {
 // Lança as parcelas seguintes automaticamente, exceto para "GASTOS FIXOS"
 // (contas de valor variável, lançadas mês a mês com o valor real).
 function gerarParcelasAutomaticas(observacao, qtdParcelas) {
-  const obs = String(observacao || "").trim().toUpperCase();
+  const obs = String(observacao || "")
+    .trim()
+    .toUpperCase();
   return qtdParcelas > 1 && obs !== "GASTOS FIXOS";
 }
 
 // Parcelas ainda não faturadas permanecem em aberto
 function condicaoParcelasFuturas(condicao, observacao) {
   const texto = `${condicao || ""} ${observacao || ""}`.toUpperCase();
-  if (texto.includes("RECEBER") || texto.includes("RECEBIDO")) return "À RECEBER";
+  if (texto.includes("RECEBER") || texto.includes("RECEBIDO"))
+    return "À RECEBER";
   return "À PAGAR";
 }
 
@@ -942,18 +1003,23 @@ document.getElementById("formCD").addEventListener("submit", (e) => {
 });
 
 // Atualiza o ano da fatura e o resumo do parcelamento enquanto o usuário digita
-["cdData", "cdValor", "cdParcelas", "cdQtdParcelas", "cdCondicao", "cdObservacao"].forEach(
-  (id) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const atualizar = () => {
-      sincronizarAnoFaturaCD();
-      atualizarPreviewParcelasCD();
-    };
-    el.addEventListener("input", atualizar);
-    el.addEventListener("change", atualizar);
-  },
-);
+[
+  "cdData",
+  "cdValor",
+  "cdParcelas",
+  "cdQtdParcelas",
+  "cdCondicao",
+  "cdObservacao",
+].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const atualizar = () => {
+    sincronizarAnoFaturaCD();
+    atualizarPreviewParcelasCD();
+  };
+  el.addEventListener("input", atualizar);
+  el.addEventListener("change", atualizar);
+});
 
 [
   "cdFiltroAno",
@@ -2160,7 +2226,9 @@ function renderStatusSync(s) {
   if (!el) return;
   const nuvem = s.modo === "nuvem";
   el.classList.remove("online", "offline", "sincronizando");
-  el.classList.add(nuvem ? (s.pendente ? "sincronizando" : "online") : "offline");
+  el.classList.add(
+    nuvem ? (s.pendente ? "sincronizando" : "online") : "offline",
+  );
   el.textContent = nuvem
     ? s.pendente
       ? "☁️ Sincronizando…"
@@ -2180,7 +2248,9 @@ if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("sw.js")
-      .catch((e) => console.warn("[PWA] service worker não registrado:", e.message));
+      .catch((e) =>
+        console.warn("[PWA] service worker não registrado:", e.message),
+      );
   });
 }
 

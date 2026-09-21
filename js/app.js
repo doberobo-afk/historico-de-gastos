@@ -313,6 +313,7 @@ function filtrosCF() {
 }
 
 let assinaturaFiltros = { cf: "", cd: "" };
+let indiceCFEditando = null;
 
 // Paginação reutilizável (Controle Financeiro / Controle de Dívidas)
 function renderPager(idContainer, total, paginaAtual, irParaPagina) {
@@ -411,12 +412,18 @@ function renderControleFinanceiro() {
       <td><span class="badge ${badgeClass}">${esc(row.ENTRADA_SAIDA)}</span></td>
       <td>${esc(row.OBSERVACAO)}</td>
       <td class="actions-col">
+        <button title="Editar" data-edit-cf="${esc(idx)}">✏️</button>
         <button title="Excluir" data-del-cf="${esc(idx)}">🗑️</button>
       </td>`;
     tbody.appendChild(tr);
   });
 
-  // Exclusão (o índice é o original, não o da página)
+  // Edição e exclusão usam o índice original, não o da página.
+  tbody.querySelectorAll("[data-edit-cf]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      iniciarEdicaoCF(Number(btn.dataset.editCf)),
+    );
+  });
   tbody.querySelectorAll("[data-del-cf]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = Number(btn.dataset.delCf);
@@ -475,14 +482,62 @@ document.getElementById("formCF").addEventListener("submit", (e) => {
     OBSERVACAO:
       document.getElementById("cfObservacao").value || "GASTOS VARIÁVEIS",
   };
-  STATE.cf.unshift(novo);
+  if (indiceCFEditando === null) {
+    STATE.cf.unshift(novo);
+  } else if (STATE.cf[indiceCFEditando]) {
+    STATE.cf[indiceCFEditando] = {
+      ...STATE.cf[indiceCFEditando],
+      ...novo,
+    };
+  }
   salvar(LS_KEYS.cf, STATE.cf);
-  e.target.reset();
+  limparEdicaoCF();
   popularSelectsAnoMes();
   popularDropdownsCadastro();
   renderControleFinanceiro();
   renderResumo();
 });
+
+function iniciarEdicaoCF(idx) {
+  const row = STATE.cf[idx];
+  if (!row) return;
+  indiceCFEditando = idx;
+  const form = document.getElementById("formCF");
+  document.getElementById("cfEntradaSaida").value =
+    row.ENTRADA_SAIDA || "DESPESA";
+  atualizarTipoCF();
+  document.getElementById("cfTipo").value = row.TIPO || "";
+  document.getElementById("cfValor").value = num(row.VALOR);
+  document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
+  document.getElementById("cfData").value = dataBrParaISO(row.DATA);
+  document.getElementById("cfAno").value =
+    row.ANO || anoDaDataBr(row.DATA) || "";
+  document.getElementById("cfObservacao").value = row.OBSERVACAO || "";
+  form.querySelector('button[type="submit"]').textContent =
+    "💾 Salvar alteração";
+  let cancelar = document.getElementById("cfCancelarEdicao");
+  if (!cancelar) {
+    const submitButton = form.querySelector('button[type="submit"]');
+    cancelar = document.createElement("button");
+    cancelar.type = "button";
+    cancelar.id = "cfCancelarEdicao";
+    cancelar.className = "btn secondary full";
+    cancelar.textContent = "Cancelar edição";
+    cancelar.addEventListener("click", limparEdicaoCF);
+    submitButton.parentElement.appendChild(cancelar);
+  }
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function limparEdicaoCF() {
+  indiceCFEditando = null;
+  const form = document.getElementById("formCF");
+  form.reset();
+  form.querySelector('button[type="submit"]').textContent =
+    "➕ Adicionar Lançamento";
+  document.getElementById("cfCancelarEdicao")?.remove();
+  atualizarTipoCF();
+}
 
 ["cfFiltroAno", "cfFiltroMes", "cfFiltroTipo", "cfFiltroTexto"].forEach(
   (id) => {
