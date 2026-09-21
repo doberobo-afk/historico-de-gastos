@@ -4,7 +4,7 @@
   "description": "Resumo mensal, lançamentos, dívidas parceladas e planejamento orçado x realizado — com sincronização na nuvem.",
   "lang": "pt-BR",
   "dir": "ltr",
-  "start_url": "./controleFinanceiro.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",

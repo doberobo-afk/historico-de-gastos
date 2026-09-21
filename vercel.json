@@ -1,6 +1,10 @@
 {
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "outputDirectory": ".",
+  "functions": {
+    "api/extrair.py": {
+      "includeFiles": "extrator_fatura.py"
+    }
+  }
 }
