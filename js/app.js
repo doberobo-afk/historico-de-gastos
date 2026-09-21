@@ -476,7 +476,8 @@ document.getElementById("formCF").addEventListener("submit", (e) => {
     VALOR: parseFloat(document.getElementById("cfValor").value) || 0,
     DISCRIMINACAO: document.getElementById("cfDiscriminacao").value,
     DATA: dataBr,
-    VENCIMENTO: mesDaDataBr(dataBr),
+    VENCIMENTO:
+      document.getElementById("cfVencimento").value || mesDaDataBr(dataBr),
     ANO: parseInt(document.getElementById("cfAno").value, 10),
     ENTRADA_SAIDA: document.getElementById("cfEntradaSaida").value,
     OBSERVACAO:
@@ -510,6 +511,8 @@ function iniciarEdicaoCF(idx) {
   document.getElementById("cfValor").value = num(row.VALOR);
   document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
   document.getElementById("cfData").value = dataBrParaISO(row.DATA);
+  document.getElementById("cfVencimento").value =
+    row.VENCIMENTO || mesDaDataBr(row.DATA);
   document.getElementById("cfAno").value =
     row.ANO || anoDaDataBr(row.DATA) || "";
   document.getElementById("cfObservacao").value = row.OBSERVACAO || "";
