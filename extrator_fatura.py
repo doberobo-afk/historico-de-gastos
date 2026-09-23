@@ -32,10 +32,8 @@ LINHA_TRANSACAO = re.compile(
     r"^(?:(\d{2}/\d{2})\s+)?(.+?)\s+(?:(BR|FR)\s+)?R\$\s*(-?[\d.]+,\d{2})\s*$"
 )
 
-# "Vencimento ... 10/09/2026" (aceita "/", "." ou "-" como separador)
-PADRAO_VENCIMENTO = re.compile(
-    r"vencimento[^\n\d]{0,30}(\d{2})[/.\-](\d{2})[/.\-](\d{4})", re.IGNORECASE
-)
+# "Vencimento ... 01/10/2026" -> mes=10, ano=2026 (mes/ano da fatura, nao da compra)
+PADRAO_VENCIMENTO = re.compile(r"Vencimento\D*(\d{2}/\d{2}/\d{4})", re.IGNORECASE)
 
 
 def ano_da_transacao(mes: int, mes_fechamento: int, ano_fatura: int) -> int:
@@ -115,14 +113,18 @@ def extrair_transacoes_de_texto(
     return extrair_transacoes_de_paginas([texto], ano_fatura, mes_fechamento)
 
 
-def detectar_vencimento(paginas: Iterable[str]) -> Optional[Dict[str, int]]:
-    """Procura a data de vencimento impressa na fatura (ex.: "Vencimento 10/09/2026")."""
+def detectar_vencimento(paginas: Iterable[str]) -> Optional[Dict[str, object]]:
+    """Procura a data de vencimento impressa na fatura (ex.: "Vencimento 01/10/2026").
+
+    Devolve {"data": "01/10/2026", "dia": 1, "mes": 10, "ano": 2026} ou None.
+    """
     for texto in paginas:
         m = PADRAO_VENCIMENTO.search(texto or "")
         if m:
-            dia, mes, ano = (int(x) for x in m.groups())
+            data_str = m.group(1)
+            dia, mes, ano = (int(x) for x in data_str.split("/"))
             if 1 <= mes <= 12:
-                return {"dia": dia, "mes": mes, "ano": ano}
+                return {"data": data_str, "dia": dia, "mes": mes, "ano": ano}
     return None
 
 

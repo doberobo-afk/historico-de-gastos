@@ -1296,10 +1296,10 @@ async function importarPDF(arquivo) {
   }
 
   const novos = processarFaturaCartao(dados.lancamentos || []);
-  // Usa o vencimento real da fatura (impresso no PDF) para todos os lançamentos,
-  // em vez do mês da compra — cada compra é lançada na fatura em que foi cobrada.
-  const mesVencimento = MESES[(parseInt(dados.mes_fechamento, 10) || 0) - 1];
-  const anoVencimento = parseInt(dados.ano_fatura, 10);
+  // Usa o vencimento real da fatura (competência) para classificar os lançamentos,
+  // mas NÃO altera o campo DATA — ele continua sendo a data da compra.
+  const mesVencimento = MESES[(parseInt(dados.mes, 10) || 0) - 1];
+  const anoVencimento = parseInt(dados.ano, 10);
   if (mesVencimento) {
     novos.forEach((n) => {
       n.VENCIMENTO = mesVencimento;
@@ -1312,8 +1312,10 @@ async function importarPDF(arquivo) {
   return {
     total: novos.length,
     soma: novos.reduce((acc, n) => acc + num(n.VALOR), 0),
+    mesVencimento,
+    anoVencimento,
     tipoDetectado: dados.vencimento_detectado
-      ? `fatura de cartão (PDF) — vencimento ${mesVencimento}/${anoVencimento}`
+      ? `fatura de cartão (PDF) — vencimento ${dados.vencimento} (competência ${mesVencimento}/${anoVencimento})`
       : "fatura de cartão (PDF) — vencimento não encontrado no PDF, usado mês atual",
   };
 }
@@ -1338,6 +1340,14 @@ document.getElementById("cfImportBtn").addEventListener("click", () => {
         status.textContent = `✅ ${resultado.total} lançamentos importados (${resultado.tipoDetectado}) — total ${brMoeda(resultado.soma)}`;
         popularSelectsAnoMes();
         popularDropdownsCadastro();
+        // Seleciona automaticamente o filtro para a competência (mês/ano do vencimento)
+        if (resultado.mesVencimento) {
+          const filtroAno = document.getElementById("cfFiltroAno");
+          const filtroMes = document.getElementById("cfFiltroMes");
+          if (filtroAno && resultado.anoVencimento)
+            filtroAno.value = String(resultado.anoVencimento);
+          if (filtroMes) filtroMes.value = resultado.mesVencimento;
+        }
         renderControleFinanceiro();
         renderResumo();
         input.value = "";

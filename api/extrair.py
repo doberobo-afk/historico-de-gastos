@@ -10,7 +10,10 @@ Formatos aceitos:
   POST /api/extrair?ano=2026&mes=8   application/pdf (corpo = PDF bruto, legado)
   GET  /api/extrair   health check
 
-Resposta: {"ok": true, "tipo": "pdf"|"csv", "total": 12, "soma": 1234.56, "lancamentos": [...]}
+Resposta: {"ok": true, "tipo": "pdf"|"csv", "total": 12, "soma": 1234.56, "ano": 2026,
+  "mes": 10, "vencimento": "01/10/2026", "vencimento_detectado": true, "lancamentos": [...]}
+Para PDF, "ano"/"mes" são a competência (mês/ano do vencimento impresso na fatura, não da
+compra) — cada lançamento em "lancamentos" mantém a data de compra original no campo "Data".
 
 Todo o processamento acontece em memória — nenhum arquivo é salvo em disco.
 
@@ -280,10 +283,10 @@ class handler(BaseHTTPRequestHandler):
                 "tipo": tipo_resultado,
                 "total": len(lancamentos),
                 "soma": soma_valores(lancamentos) if tipo_resultado == "pdf" else None,
-                "ano_fatura": ano,
-                "mes_fechamento": mes,
+                "ano": ano,
+                "mes": mes,
                 "vencimento_detectado": vencimento_detectado is not None,
-                "vencimento": vencimento_detectado,
+                "vencimento": (vencimento_detectado or {}).get("data"),
                 "lancamentos": lancamentos,
             },
         )
