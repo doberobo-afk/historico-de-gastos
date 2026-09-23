@@ -36,7 +36,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if RAIZ not in sys.path:
     sys.path.insert(0, RAIZ)
 
-from extrator_fatura import extrair_transacoes_de_bytes, soma_valores  # noqa: E402
+from extrator_fatura import extrair_fatura_de_bytes, soma_valores  # noqa: E402
 
 TAMANHO_MAX = 6 * 1024 * 1024  # 6 MB (faturas reais ficam bem abaixo disso)
 
@@ -224,10 +224,11 @@ class handler(BaseHTTPRequestHandler):
 
         ano = _inteiro(ano_fatura, agora.year, 2000, 2100)
         mes = _inteiro(mes_fechamento, agora.month, 1, 12)
+        vencimento_detectado = None
 
         if _eh_pdf(nome_arquivo, conteudo_arquivo):
             try:
-                lancamentos = extrair_transacoes_de_bytes(conteudo_arquivo, ano, mes)
+                resultado_pdf = extrair_fatura_de_bytes(conteudo_arquivo, ano, mes)
             except Exception as erro:  # pragma: no cover - PDF corrompido/layout novo
                 _responder(
                     self,
@@ -239,6 +240,10 @@ class handler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+            lancamentos = resultado_pdf["transacoes"]
+            vencimento_detectado = resultado_pdf["vencimento"]
+            ano = resultado_pdf["ano_fatura"]
+            mes = resultado_pdf["mes_fechamento"]
             tipo_resultado = "pdf"
         else:
             try:
@@ -277,6 +282,8 @@ class handler(BaseHTTPRequestHandler):
                 "soma": soma_valores(lancamentos) if tipo_resultado == "pdf" else None,
                 "ano_fatura": ano,
                 "mes_fechamento": mes,
+                "vencimento_detectado": vencimento_detectado is not None,
+                "vencimento": vencimento_detectado,
                 "lancamentos": lancamentos,
             },
         )

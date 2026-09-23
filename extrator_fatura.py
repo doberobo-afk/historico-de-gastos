@@ -32,6 +32,11 @@ LINHA_TRANSACAO = re.compile(
     r"^(?:(\d{2}/\d{2})\s+)?(.+?)\s+(?:(BR|FR)\s+)?R\$\s*(-?[\d.]+,\d{2})\s*$"
 )
 
+# "Vencimento ... 10/09/2026" (aceita "/", "." ou "-" como separador)
+PADRAO_VENCIMENTO = re.compile(
+    r"vencimento[^\n\d]{0,30}(\d{2})[/.\-](\d{2})[/.\-](\d{4})", re.IGNORECASE
+)
+
 
 def ano_da_transacao(mes: int, mes_fechamento: int, ano_fatura: int) -> int:
     """Compras parceladas antigas (mês maior que o de fechamento) são do ano anterior."""
@@ -110,6 +115,17 @@ def extrair_transacoes_de_texto(
     return extrair_transacoes_de_paginas([texto], ano_fatura, mes_fechamento)
 
 
+def detectar_vencimento(paginas: Iterable[str]) -> Optional[Dict[str, int]]:
+    """Procura a data de vencimento impressa na fatura (ex.: "Vencimento 10/09/2026")."""
+    for texto in paginas:
+        m = PADRAO_VENCIMENTO.search(texto or "")
+        if m:
+            dia, mes, ano = (int(x) for x in m.groups())
+            if 1 <= mes <= 12:
+                return {"dia": dia, "mes": mes, "ano": ano}
+    return None
+
+
 def _pdfplumber():  # pragma: no cover - import tardio evita dependência em testes
     import pdfplumber  # type: ignore
 
@@ -124,6 +140,29 @@ def extrair_transacoes_de_bytes(
     with pdfplumber.open(io.BytesIO(dados)) as pdf:
         paginas = [page.extract_text() or "" for page in pdf.pages]
     return extrair_transacoes_de_paginas(paginas, ano_fatura, mes_fechamento)
+
+
+def extrair_fatura_de_bytes(
+    dados: bytes, ano_fatura: int = 2026, mes_fechamento: int = 8
+) -> Dict:
+    """Como `extrair_transacoes_de_bytes`, mas detecta o vencimento real impresso
+    na fatura e usa o mês/ano dele (em vez do mês da compra) para classificar
+    os lançamentos. Devolve {"transacoes", "vencimento", "ano_fatura", "mes_fechamento"}.
+    """
+    pdfplumber = _pdfplumber()
+    with pdfplumber.open(io.BytesIO(dados)) as pdf:
+        paginas = [page.extract_text() or "" for page in pdf.pages]
+    vencimento = detectar_vencimento(paginas)
+    if vencimento:
+        ano_fatura = vencimento["ano"]
+        mes_fechamento = vencimento["mes"]
+    transacoes = extrair_transacoes_de_paginas(paginas, ano_fatura, mes_fechamento)
+    return {
+        "transacoes": transacoes,
+        "vencimento": vencimento,
+        "ano_fatura": ano_fatura,
+        "mes_fechamento": mes_fechamento,
+    }
 
 
 def extrair_transacoes(

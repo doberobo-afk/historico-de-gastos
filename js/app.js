@@ -1296,12 +1296,25 @@ async function importarPDF(arquivo) {
   }
 
   const novos = processarFaturaCartao(dados.lancamentos || []);
+  // Usa o vencimento real da fatura (impresso no PDF) para todos os lançamentos,
+  // em vez do mês da compra — cada compra é lançada na fatura em que foi cobrada.
+  const mesVencimento = MESES[(parseInt(dados.mes_fechamento, 10) || 0) - 1];
+  const anoVencimento = parseInt(dados.ano_fatura, 10);
+  if (mesVencimento) {
+    novos.forEach((n) => {
+      n.VENCIMENTO = mesVencimento;
+      if (anoVencimento) n.ANO = anoVencimento;
+    });
+  }
+
   STATE.cf = [...novos, ...STATE.cf];
   salvar(LS_KEYS.cf, STATE.cf);
   return {
     total: novos.length,
     soma: novos.reduce((acc, n) => acc + num(n.VALOR), 0),
-    tipoDetectado: "fatura de cartão (PDF)",
+    tipoDetectado: dados.vencimento_detectado
+      ? `fatura de cartão (PDF) — vencimento ${mesVencimento}/${anoVencimento}`
+      : "fatura de cartão (PDF) — vencimento não encontrado no PDF, usado mês atual",
   };
 }
 
