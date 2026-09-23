@@ -4,13 +4,19 @@
  * Persiste os dados do app no Supabase via REST (PostgREST), sem dependências.
  *
  *   GET    /api/sync   -> { ok, usuario, dados: {controle_financeiro, ...} }
- *   POST   /api/sync   -> grava/atualiza o documento do usuário
- *   DELETE /api/sync   -> apaga o documento do usuário (reset)
+ *   POST   /api/sync   -> grava/atualiza o documento do usuário autenticado
+ *   DELETE /api/sync   -> apaga o documento do usuário autenticado (reset)
+ *
+ * Autenticação: obrigatória em toda requisição via
+ *   Authorization: Bearer <access_token da sessão Supabase>
+ * O token é validado contra o Supabase Auth (GET /auth/v1/user) e o
+ * user_id resultante é usado para filtrar/gravar SOMENTE os dados do
+ * próprio usuário. Sem token válido a API responde 401.
  *
  * Variáveis de ambiente:
  *   SUPABASE_URL               -> https://xxxx.supabase.co
  *   SUPABASE_SERVICE_ROLE_KEY  -> chave service_role (somente no servidor)
- *   SYNC_TOKEN (opcional)      -> exige o header "x-sync-token"
+ *   SUPABASE_ANON_KEY          -> chave anon (usada só para validar o token)
  *
  * Sem Supabase configurado a função responde 501 e o front-end entra
  * automaticamente em modo local (localStorage), sem quebrar o app.
@@ -19,15 +25,15 @@
  */
 const TABELA = "hg_dados";
 const LIMITE_BYTES = 4 * 1024 * 1024; // 4 MB por documento
-const USUARIO_PADRAO = "demo";
 
 function config() {
   return {
     url: String(process.env.SUPABASE_URL || "").replace(/\/+$/, ""),
-    chave: String(
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.SUPABASE_KEY ||
-        "",
+    chaveServico: String(
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || "",
+    ),
+    chaveAnon: String(
+      process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || "",
     ),
   };
 }
@@ -39,29 +45,34 @@ function responder(res, codigo, corpo) {
   res.end(JSON.stringify(corpo));
 }
 
-function usuarioDe(req) {
-  const cabecalho =
-    req.headers["x-usuario"] || req.headers["x-user"] || "";
-  const candidato = String(cabecalho).trim();
-  if (/^[A-Za-z0-9._@-]{1,64}$/.test(candidato)) return candidato;
-  const consulta = String(req.url || "").split("?")[1] || "";
-  const parametros = new URLSearchParams(consulta);
-  const porQuery = String(parametros.get("usuario") || "").trim();
-  return /^[A-Za-z0-9._@-]{1,64}$/.test(porQuery) ? porQuery : USUARIO_PADRAO;
+function tokenDe(req) {
+  const cabecalho = String(req.headers["authorization"] || "").trim();
+  const m = /^Bearer\s+(.+)$/i.exec(cabecalho);
+  return m ? m[1].trim() : "";
 }
 
-function autorizado(req) {
-  const esperado = String(process.env.SYNC_TOKEN || "").trim();
-  if (!esperado) return true;
-  return String(req.headers["x-sync-token"] || "").trim() === esperado;
+// Valida o access_token da sessão do usuário direto no Supabase Auth e
+// devolve { id, email } — ou null se o token for inválido/expirado.
+async function usuarioAutenticado(cfg, token) {
+  if (!token) return null;
+  const resposta = await fetch(`${cfg.url}/auth/v1/user`, {
+    headers: {
+      apikey: cfg.chaveAnon || cfg.chaveServico,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!resposta.ok) return null;
+  const usuario = await resposta.json().catch(() => null);
+  if (!usuario || !usuario.id) return null;
+  return { id: usuario.id, email: usuario.email || usuario.id };
 }
 
 async function supabase(cfg, metodo, caminho, corpo, prefer) {
   const resposta = await fetch(`${cfg.url}/rest/v1/${caminho}`, {
     method: metodo,
     headers: {
-      apikey: cfg.chave,
-      Authorization: `Bearer ${cfg.chave}`,
+      apikey: cfg.chaveServico,
+      Authorization: `Bearer ${cfg.chaveServico}`,
       "Content-Type": "application/json",
       Prefer: prefer || "return=minimal",
     },
@@ -88,7 +99,7 @@ function corpoJson(req) {
 module.exports = async function handler(req, res) {
   const cfg = config();
 
-  if (!cfg.url || !cfg.chave) {
+  if (!cfg.url || !cfg.chaveServico) {
     return responder(res, 501, {
       ok: false,
       modo: "local",
@@ -97,18 +108,31 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  if (!autorizado(req)) {
-    return responder(res, 401, { ok: false, erro: "token de sincronização inválido" });
+  const token = tokenDe(req);
+  if (!token) {
+    return responder(res, 401, {
+      ok: false,
+      erro: "token de autenticação ausente",
+    });
   }
 
-  const usuario = usuarioDe(req);
+  const usuarioAuth = await usuarioAutenticado(cfg, token).catch(() => null);
+  if (!usuarioAuth) {
+    return responder(res, 401, {
+      ok: false,
+      erro: "token de autenticação inválido",
+    });
+  }
+
+  const usuario = usuarioAuth.email;
+  const userId = usuarioAuth.id;
 
   try {
     if (req.method === "GET") {
       const linhas = await supabase(
         cfg,
         "GET",
-        `${TABELA}?usuario=eq.${encodeURIComponent(usuario)}&select=dados,atualizado_em&limit=1`,
+        `${TABELA}?user_id=eq.${encodeURIComponent(userId)}&select=dados,atualizado_em&limit=1`,
       );
       const registro = Array.isArray(linhas) ? linhas[0] : null;
       return responder(res, 200, {
@@ -123,7 +147,10 @@ module.exports = async function handler(req, res) {
       const corpo = corpoJson(req);
       const dados = corpo && corpo.dados ? corpo.dados : corpo;
       if (!dados || typeof dados !== "object") {
-        return responder(res, 400, { ok: false, erro: "campo 'dados' ausente" });
+        return responder(res, 400, {
+          ok: false,
+          erro: "campo 'dados' ausente",
+        });
       }
 
       const serializado = JSON.stringify(dados);
@@ -141,6 +168,7 @@ module.exports = async function handler(req, res) {
         [
           {
             usuario,
+            user_id: userId,
             dados,
             atualizado_em: new Date().toISOString(),
           },
@@ -167,7 +195,7 @@ module.exports = async function handler(req, res) {
       await supabase(
         cfg,
         "DELETE",
-        `${TABELA}?usuario=eq.${encodeURIComponent(usuario)}`,
+        `${TABELA}?user_id=eq.${encodeURIComponent(userId)}`,
       );
       return responder(res, 200, { ok: true, usuario, apagado: true });
     }

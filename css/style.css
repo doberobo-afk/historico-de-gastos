@@ -118,6 +118,32 @@ a { color: var(--azul); }
 .sync-status.sincronizando { animation: pulsar 1.2s ease-in-out infinite; }
 .sync-status.offline { background: rgba(0, 0, 0, 0.24); }
 
+/* ------------------------------ Login (auth) ------------------------------ */
+.login-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--fundo); color: var(--texto);
+}
+.login-card {
+  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px;
+  padding: 28px; background: var(--painel-bg); border: 1px solid var(--painel-borda);
+  border-radius: var(--raio); box-shadow: var(--sombra-forte);
+}
+.login-card h1 { margin: 0 0 4px; font-size: 1.3rem; }
+.login-card label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: 600; }
+.login-card input {
+  padding: 10px 12px; font-size: 0.95rem; color: var(--campo-texto); background: var(--campo-bg);
+  border: 1px solid var(--campo-borda); border-radius: var(--raio-sm);
+}
+.login-acoes { display: flex; gap: 10px; margin-top: 4px; }
+.login-acoes .btn { flex: 1; }
+.login-link {
+  align-self: center; margin-top: 4px; background: none; border: none; color: var(--azul);
+  cursor: pointer; font-size: 0.85rem; text-decoration: underline;
+}
+.login-mensagem { font-size: 0.85rem; min-height: 1.1em; }
+.login-mensagem.erro { color: var(--vermelho); }
+.login-mensagem.sucesso { color: var(--verde); }
+
 /* --------------------------------- Abas ---------------------------------- */
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px; background: var(--abas-bg); }
 .tab-btn {

@@ -23,7 +23,8 @@
 
   var estado = {
     modo: "local", // "nuvem" | "local"
-    usuario: "demo",
+    usuario: null,
+    token: null,
     erro: null,
     ultimaSync: null,
     pendente: false,
@@ -69,9 +70,14 @@
     if (!s) return 0;
     var temVirgula = s.indexOf(",") !== -1;
     var temPonto = s.indexOf(".") !== -1;
-    var decimal = temVirgula && temPonto
-      ? (s.lastIndexOf(",") > s.lastIndexOf(".") ? "," : ".")
-      : (temVirgula ? "," : ".");
+    var decimal =
+      temVirgula && temPonto
+        ? s.lastIndexOf(",") > s.lastIndexOf(".")
+          ? ","
+          : "."
+        : temVirgula
+          ? ","
+          : ".";
     if (decimal === ",") s = s.replace(/\./g, "").replace(",", ".");
     else s = s.replace(/,/g, "");
     var n = parseFloat(s);
@@ -101,9 +107,15 @@
   function gravarLocal(dados) {
     CAMPOS.forEach(function (campo) {
       try {
-        global.localStorage.setItem(CHAVES[campo], JSON.stringify(dados[campo]));
+        global.localStorage.setItem(
+          CHAVES[campo],
+          JSON.stringify(dados[campo]),
+        );
       } catch (e) {
-        console.warn("[HGStore] não foi possível gravar o cache local:", e.message);
+        console.warn(
+          "[HGStore] não foi possível gravar o cache local:",
+          e.message,
+        );
       }
     });
   }
@@ -117,7 +129,6 @@
       }
     });
   }
-
 
   // ---------------------------------------------------------------------
   // Semente (exemplos fictícios) - usada quando não há dados
@@ -138,7 +149,8 @@
       cf: Array.isArray(d.controle_financeiro) ? d.controle_financeiro : [],
       cd: Array.isArray(d.controle_dividas) ? d.controle_dividas : [],
       cad: d.cadastros && typeof d.cadastros === "object" ? d.cadastros : {},
-      meta: d.resumo_meta && typeof d.resumo_meta === "object" ? d.resumo_meta : {},
+      meta:
+        d.resumo_meta && typeof d.resumo_meta === "object" ? d.resumo_meta : {},
     };
   }
 
@@ -148,7 +160,6 @@
 
   function serializar(dados) {
     return {
-      usuario: estado.usuario,
       dados: {
         controle_financeiro: dados.cf || [],
         controle_dividas: dados.cd || [],
@@ -159,9 +170,12 @@
   }
 
   // ---------------------------------------------------------------------
-  // Comunicação com /api/sync
+  // Comunicação com /api/sync (exige sessão autenticada - ver definirSessao)
   // ---------------------------------------------------------------------
   function requisitar(metodo, corpo) {
+    if (!estado.token) {
+      return Promise.reject(new Error("sem sessão autenticada"));
+    }
     var controlador =
       typeof AbortController !== "undefined" ? new AbortController() : null;
     var timer = controlador
@@ -175,12 +189,13 @@
         method: metodo,
         headers: {
           "Content-Type": "application/json",
-          "X-Usuario": estado.usuario,
+          Authorization: "Bearer " + estado.token,
         },
         body: corpo ? JSON.stringify(corpo) : undefined,
         signal: controlador ? controlador.signal : undefined,
       })
       .then(function (resp) {
+        if (resp.status === 401) throw new Error("sessão expirada (401)");
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         return resp.json();
       })
@@ -212,10 +227,29 @@
   // ---------------------------------------------------------------------
   // API pública
   // ---------------------------------------------------------------------
-  function definirUsuario(usuario) {
-    var limpo = String(usuario || "").trim();
-    if (limpo) estado.usuario = limpo;
+  // Chamado após login/signup bem-sucedido (usuario = e-mail, token = access_token)
+  function definirSessao(usuario, token) {
+    estado.usuario = String(usuario || "").trim() || null;
+    estado.token = String(token || "").trim() || null;
     return estado.usuario;
+  }
+
+  // Chamado no logout: derruba a sessão e limpa o cache local do usuário
+  function limparSessao() {
+    estado.usuario = null;
+    estado.token = null;
+    estado.modo = "local";
+    estado.erro = null;
+    estado.ultimaSync = null;
+    estado.pendente = false;
+    pendentes = {};
+    if (timerPush) {
+      global.clearTimeout(timerPush);
+      timerPush = null;
+    }
+    limparLocal();
+    espelho = { cf: [], cd: [], cad: {}, meta: {} };
+    emitir();
   }
 
   // Carrega da nuvem; se a nuvem não existir/responder, usa o cache local
@@ -355,7 +389,8 @@
     safeParse: safeParse,
     esc: esc,
     num: num,
-    definirUsuario: definirUsuario,
+    definirSessao: definirSessao,
+    limparSessao: limparSessao,
     load: load,
     save: save,
     push: push,

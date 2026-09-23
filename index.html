@@ -17,6 +17,26 @@
 </head>
 <body class="dark-theme">
 
+<div id="loginScreen" class="login-screen">
+  <form id="formLogin" class="login-card">
+    <h1>💰 Controle Financeiro</h1>
+    <p class="hint">Entre com sua conta para acessar seus dados.</p>
+    <label>E-mail
+      <input type="email" id="loginEmail" required autocomplete="username" />
+    </label>
+    <label>Senha
+      <input type="password" id="loginSenha" required autocomplete="current-password" minlength="6" />
+    </label>
+    <div id="loginMensagem" class="login-mensagem" role="alert"></div>
+    <div class="login-acoes">
+      <button type="submit" class="btn" id="btnEntrar">Entrar</button>
+      <button type="button" class="btn secondary" id="btnCriarConta">Criar conta</button>
+    </div>
+    <button type="button" class="login-link" id="btnEsqueciSenha">Esqueci minha senha</button>
+  </form>
+</div>
+
+<div id="appRoot" style="display:none;">
 <header class="app-header">
   <div class="header-left">
     <h1>💰 Controle Financeiro</h1>
@@ -30,6 +50,7 @@
     <button class="icon-btn" id="themeToggle" title="Alternar tema claro/escuro">🌗</button>
     <button class="btn secondary" id="btnExportar">⬇️ Exportar backup</button>
     <button class="btn danger" id="btnResetar">♻️ Restaurar dados de exemplo</button>
+    <button class="btn secondary" id="btnSair">🚪 Sair</button>
   </div>
 </header>
 
@@ -371,7 +392,10 @@
     </div>
   </div>
 </main>
+</div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/auth-config.js"></script>
 <script src="js/store.js"></script>
 <script src="js/dados_iniciais.js"></script>
 <script src="js/app.js"></script>

@@ -2534,13 +2534,146 @@ window.addEventListener("error", (ev) => {
   console.error("Global error caught:", ev.error || ev.message || ev);
 });
 
+// ---------------------------------------------------------------------
+// Autenticação (login/criar conta/esqueci a senha) via HGAuth (Supabase)
+// ---------------------------------------------------------------------
+function mostrarApp() {
+  const login = document.getElementById("loginScreen");
+  const root = document.getElementById("appRoot");
+  if (login) login.style.display = "none";
+  if (root) root.style.display = "";
+}
+
+function mostrarLogin() {
+  const login = document.getElementById("loginScreen");
+  const root = document.getElementById("appRoot");
+  if (root) root.style.display = "none";
+  if (login) login.style.display = "flex";
+}
+
+function mensagemLogin(texto, tipo) {
+  const el = document.getElementById("loginMensagem");
+  if (!el) return;
+  el.textContent = texto || "";
+  el.classList.remove("erro", "sucesso");
+  if (tipo) el.classList.add(tipo);
+}
+
+async function entrarComSessao(sessao) {
+  if (!sessao || !window.HGStore) return false;
+  HGStore.definirSessao(sessao.usuario, sessao.token);
+  mostrarApp();
+  await iniciar();
+  return true;
+}
+
+async function encerrarSessao() {
+  if (window.HGAuth) {
+    try {
+      await HGAuth.sair();
+    } catch (e) {
+      /* segue para limpar o estado local mesmo se a chamada falhar */
+    }
+  }
+  if (window.HGStore) HGStore.limparSessao();
+  mensagemLogin("");
+  mostrarLogin();
+}
+
+const formLoginEl = document.getElementById("formLogin");
+if (formLoginEl) {
+  formLoginEl.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    mensagemLogin("");
+    const email = document.getElementById("loginEmail").value.trim();
+    const senha = document.getElementById("loginSenha").value;
+    if (!window.HGAuth)
+      return mensagemLogin("Autenticação indisponível.", "erro");
+    try {
+      const sessao = await HGAuth.entrar(email, senha);
+      if (!sessao) return mensagemLogin("Não foi possível entrar.", "erro");
+      await entrarComSessao(sessao);
+    } catch (e) {
+      mensagemLogin(e && e.message ? e.message : "Falha ao entrar.", "erro");
+    }
+  });
+}
+
+const btnCriarContaEl = document.getElementById("btnCriarConta");
+if (btnCriarContaEl) {
+  btnCriarContaEl.addEventListener("click", async () => {
+    mensagemLogin("");
+    const email = document.getElementById("loginEmail").value.trim();
+    const senha = document.getElementById("loginSenha").value;
+    if (!email || !senha) {
+      return mensagemLogin(
+        "Informe e-mail e senha para criar a conta.",
+        "erro",
+      );
+    }
+    if (!window.HGAuth)
+      return mensagemLogin("Autenticação indisponível.", "erro");
+    try {
+      const sessao = await HGAuth.criarConta(email, senha);
+      if (sessao) {
+        await entrarComSessao(sessao);
+      } else {
+        mensagemLogin(
+          "Conta criada! Verifique seu e-mail para confirmar o acesso.",
+          "sucesso",
+        );
+      }
+    } catch (e) {
+      mensagemLogin(
+        e && e.message ? e.message : "Falha ao criar conta.",
+        "erro",
+      );
+    }
+  });
+}
+
+const btnEsqueciSenhaEl = document.getElementById("btnEsqueciSenha");
+if (btnEsqueciSenhaEl) {
+  btnEsqueciSenhaEl.addEventListener("click", async () => {
+    mensagemLogin("");
+    const email = document.getElementById("loginEmail").value.trim();
+    if (!email)
+      return mensagemLogin(
+        "Informe seu e-mail para recuperar a senha.",
+        "erro",
+      );
+    if (!window.HGAuth)
+      return mensagemLogin("Autenticação indisponível.", "erro");
+    try {
+      await HGAuth.esqueciSenha(email);
+      mensagemLogin(
+        "Enviamos um e-mail com instruções para redefinir sua senha.",
+        "sucesso",
+      );
+    } catch (e) {
+      mensagemLogin(
+        e && e.message ? e.message : "Falha ao enviar e-mail.",
+        "erro",
+      );
+    }
+  });
+}
+
+const btnSairEl = document.getElementById("btnSair");
+if (btnSairEl) {
+  btnSairEl.addEventListener("click", encerrarSessao);
+}
+
 (async function bootstrap() {
   try {
-    await iniciar();
+    const sessao = window.HGAuth ? await HGAuth.obterSessao() : null;
+    if (sessao) {
+      await entrarComSessao(sessao);
+    } else {
+      mostrarLogin();
+    }
   } catch (err) {
-    console.error("Erro durante iniciar():", err);
-    try {
-      alert("Erro durante inicialização: " + (err && err.message));
-    } catch (e) {}
+    console.error("Erro durante inicialização:", err);
+    mostrarLogin();
   }
 })();
