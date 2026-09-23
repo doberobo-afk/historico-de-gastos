@@ -7,6 +7,10 @@ Módulo puro (sem pandas) compartilhado por:
 Layout suportado: fatura BB/Ourocard com as seções
 "Lançamentos nesta fatura" ... "Total da Fatura" e linhas no formato
 "dd/mm DESCRICAO [BR|FR] R$ 1.234,56".
+
+Detecção de vencimento também cobre os rótulos usados por BB e Caixa
+("Vencimento", "Data de Vencimento", "Vencimento da Fatura", "Venc. Fatura"),
+inclusive quando a data aparece na linha seguinte ao rótulo.
 """
 from __future__ import annotations
 
@@ -32,8 +36,27 @@ LINHA_TRANSACAO = re.compile(
     r"^(?:(\d{2}/\d{2})\s+)?(.+?)\s+(?:(BR|FR)\s+)?R\$\s*(-?[\d.]+,\d{2})\s*$"
 )
 
+# Rótulos usados pelos diferentes bancos para a data de vencimento da fatura.
+# A data costuma vir logo depois, às vezes na linha seguinte (por isso DOTALL).
+PADRAO_ROTULO_VENCIMENTO = re.compile(
+    r"(?:Data de Vencimento|Vencimento da Fatura|Venc\.\s*Fatura|Vencimento)",
+    re.IGNORECASE,
+)
+
 # "Vencimento ... 01/10/2026" -> mes=10, ano=2026 (mes/ano da fatura, nao da compra)
-PADRAO_VENCIMENTO = re.compile(r"Vencimento\D*(\d{2}/\d{2}/\d{4})", re.IGNORECASE)
+PADRAO_DATA_BARRA = re.compile(r"(\d{2})/(\d{2})/(\d{4})", re.DOTALL | re.MULTILINE)
+
+# Formato usado pela Caixa: "01 OUT 2026"
+MESES_ABREV = {
+    "JAN": 1, "FEV": 2, "MAR": 3, "ABR": 4, "MAI": 5, "JUN": 6,
+    "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12,
+}
+PADRAO_DATA_MES_ABREV = re.compile(
+    r"(\d{1,2})\s+([A-Za-zÇÃÕçãõ]{3})\.?\s+(\d{4})", re.DOTALL | re.MULTILINE
+)
+
+# Quantos caracteres após o rótulo de vencimento procurar a data
+_JANELA_VENCIMENTO = 80
 
 
 def ano_da_transacao(mes: int, mes_fechamento: int, ano_fatura: int) -> int:
@@ -114,17 +137,40 @@ def extrair_transacoes_de_texto(
 
 
 def detectar_vencimento(paginas: Iterable[str]) -> Optional[Dict[str, object]]:
-    """Procura a data de vencimento impressa na fatura (ex.: "Vencimento 01/10/2026").
+    """Procura a data de vencimento impressa na fatura, aceitando os rótulos usados
+    por BB e Caixa ("Vencimento", "Data de Vencimento", "Vencimento da Fatura",
+    "Venc. Fatura") mesmo quando a data cai na linha seguinte ao rótulo.
 
+    Tenta primeiro o formato DD/MM/AAAA e depois o formato "01 OUT 2026" (Caixa).
     Devolve {"data": "01/10/2026", "dia": 1, "mes": 10, "ano": 2026} ou None.
     """
+    paginas = list(paginas)
     for texto in paginas:
-        m = PADRAO_VENCIMENTO.search(texto or "")
-        if m:
-            data_str = m.group(1)
-            dia, mes, ano = (int(x) for x in data_str.split("/"))
-            if 1 <= mes <= 12:
-                return {"data": data_str, "dia": dia, "mes": mes, "ano": ano}
+        texto = texto or ""
+        for m_rotulo in PADRAO_ROTULO_VENCIMENTO.finditer(texto):
+            trecho = texto[m_rotulo.end(): m_rotulo.end() + _JANELA_VENCIMENTO]
+
+            m_data = PADRAO_DATA_BARRA.search(trecho)
+            if m_data:
+                dia, mes, ano = (int(x) for x in m_data.groups())
+                if 1 <= mes <= 12:
+                    data_str = f"{dia:02d}/{mes:02d}/{ano}"
+                    return {"data": data_str, "dia": dia, "mes": mes, "ano": ano}
+                continue
+
+            m_mes = PADRAO_DATA_MES_ABREV.search(trecho)
+            if m_mes:
+                dia_str, mes_abrev, ano_str = m_mes.groups()
+                mes = MESES_ABREV.get(mes_abrev.upper())
+                if mes:
+                    dia = int(dia_str)
+                    ano = int(ano_str)
+                    data_str = f"{dia:02d}/{mes:02d}/{ano}"
+                    return {"data": data_str, "dia": dia, "mes": mes, "ano": ano}
+
+    # Debug: nenhum rótulo/data de vencimento reconhecido em nenhuma página
+    print("DEBUG detectar_vencimento: vencimento não encontrado. Início do texto extraído:")
+    print((paginas[0] if paginas else "")[:1000])
     return None
 
 
