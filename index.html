@@ -118,13 +118,13 @@
     <h2>Controle Financeiro</h2>
 
     <div class="import-box">
-      <h3>📥 Importar CSV (extrato bancário ou fatura de cartão)</h3>
+      <h3>📥 Importar Fatura (CSV ou PDF)</h3>
       <div class="toolbar">
-        <input type="file" id="cfImportFile" accept=".csv" />
+        <input type="file" id="cfImportFile" accept=".csv,.pdf" />
         <button class="btn" id="cfImportBtn">Importar</button>
         <span id="cfImportStatus" class="hint"></span>
       </div>
-      <p class="hint">Detecta automaticamente o formato: extrato do Banco do Brasil (colunas Lançamento/Tipo Lançamento) ou fatura de cartão de crédito (colunas Descrição/Categoria).</p>
+      <p class="hint">CSV: detecta automaticamente extrato do Banco do Brasil ou fatura de cartão. PDF: extrai os lançamentos da fatura direto no celular (processado em memória, nada é salvo em disco).</p>
     </div>
 
     <form class="form-inline" id="formCF">
@@ -144,7 +144,7 @@
         <input type="text" id="cfDiscriminacao" required />
       </label>
       <label>Data
-        <input type="text" id="cfData" inputmode="numeric" placeholder="DD/MM/AAAA" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" maxlength="10" required />
+        <input type="date" id="cfData" required />
       </label>
       <label>Vencimento da fatura
         <select id="cfVencimento" required>

@@ -101,6 +101,16 @@ function dataCFParaBr(valor) {
   return "";
 }
 
+// Aliases usados pelos inputs type="date" (nativos): exibem DD/MM/YYYY mas
+// mantêm o armazenamento interno em DD/MM/YYYY (compatível com dados existentes)
+function formatarDataBR(iso) {
+  return dataISOParaBr(iso);
+}
+
+function parseDataISO(dataBr) {
+  return dataBrParaISO(dataBr);
+}
+
 function mesDaDataBr(dataBr) {
   if (!dataBr) return "";
   const [, m] = dataBr.split("/");
@@ -524,7 +534,7 @@ function iniciarEdicaoCF(idx) {
   document.getElementById("cfTipo").value = row.TIPO || "";
   document.getElementById("cfValor").value = num(row.VALOR);
   document.getElementById("cfDiscriminacao").value = row.DISCRIMINACAO || "";
-  document.getElementById("cfData").value = row.DATA || "";
+  document.getElementById("cfData").value = parseDataISO(row.DATA) || "";
   const vencimento = String(row.VENCIMENTO || mesDaDataBr(row.DATA) || "")
     .trim()
     .toUpperCase();
@@ -1266,15 +1276,66 @@ function importarCSV(texto) {
   };
 }
 
+// Envia o PDF para /api/extrair (processado em memória, nunca salvo em disco)
+async function importarPDF(arquivo) {
+  const hoje = new Date();
+  const formData = new FormData();
+  formData.append("arquivo", arquivo, arquivo.name);
+  formData.append("ano", String(hoje.getFullYear()));
+  formData.append("mes", String(hoje.getMonth() + 1));
+
+  const resposta = await fetch("/api/extrair", {
+    method: "POST",
+    body: formData,
+  });
+  const dados = await resposta.json().catch(() => null);
+  if (!dados || !dados.ok) {
+    throw new Error(
+      (dados && (dados.erro || dados.detalhe)) || "Falha ao extrair o PDF.",
+    );
+  }
+
+  const novos = processarFaturaCartao(dados.lancamentos || []);
+  STATE.cf = [...novos, ...STATE.cf];
+  salvar(LS_KEYS.cf, STATE.cf);
+  return {
+    total: novos.length,
+    soma: novos.reduce((acc, n) => acc + num(n.VALOR), 0),
+    tipoDetectado: "fatura de cartão (PDF)",
+  };
+}
+
 document.getElementById("cfImportBtn").addEventListener("click", () => {
   const input = document.getElementById("cfImportFile");
   const status = document.getElementById("cfImportStatus");
   const arquivo = input.files[0];
   if (!arquivo) {
-    status.textContent = "Selecione um arquivo CSV primeiro.";
+    status.textContent = "Selecione um arquivo CSV ou PDF primeiro.";
     status.style.color = "#d93025";
     return;
   }
+
+  const ehPDF = /\.pdf$/i.test(arquivo.name);
+  if (ehPDF) {
+    status.style.color = "#5f6368";
+    status.textContent = "⏳ Extraindo PDF...";
+    importarPDF(arquivo)
+      .then((resultado) => {
+        status.style.color = "#1e8e3e";
+        status.textContent = `✅ ${resultado.total} lançamentos importados (${resultado.tipoDetectado}) — total ${brMoeda(resultado.soma)}`;
+        popularSelectsAnoMes();
+        popularDropdownsCadastro();
+        renderControleFinanceiro();
+        renderResumo();
+        input.value = "";
+      })
+      .catch((err) => {
+        status.style.color = "#d93025";
+        status.textContent = `❌ ${err.message}`;
+      });
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
