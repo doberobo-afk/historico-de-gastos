@@ -9,8 +9,8 @@
   "use strict";
 
   // TODO: preencha com os dados do seu projeto Supabase (Project Settings > API).
-  var SUPABASE_URL = "https://SEU-PROJETO.supabase.co";
-  var SUPABASE_ANON_KEY = "SUA-CHAVE-ANON-PUBLICA";
+  var SUPABASE_URL = "https://kzqzhwcyzkyptljnckik.supabase.co";
+  var SUPABASE_ANON_KEY = "sb_publishable_KsHtFPV2FmNu0JbMQUuEKQ_AE-oe4rZ";
 
   var client = null;
   function cliente() {
