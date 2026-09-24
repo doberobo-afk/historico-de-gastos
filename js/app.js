@@ -1275,12 +1275,112 @@ function importarCSV(texto) {
   };
 }
 
-// Importação de fatura em PDF: desativada (o backend /api/extrair foi removido).
-// Use a importação de CSV, que roda 100% no navegador.
-async function importarPDF(_arquivo) {
-  throw new Error(
-    "Importação de PDF indisponível no momento. Use a importação de CSV.",
+// Reconstrói o texto de uma página em linhas (pdf.js só devolve "items"
+// soltos com posição x/y — sem isso, transações de linhas diferentes
+// ficariam grudadas e a regex abaixo não conseguiria separá-las).
+function linhasDaPaginaPDF(textContent) {
+  const porLinha = new Map();
+  textContent.items.forEach((item) => {
+    const y = Math.round(item.transform[5]);
+    if (!porLinha.has(y)) porLinha.set(y, []);
+    porLinha.get(y).push(item);
+  });
+  const ys = Array.from(porLinha.keys()).sort((a, b) => b - a); // topo -> base
+  return ys
+    .map((y) =>
+      porLinha
+        .get(y)
+        .sort((a, b) => a.transform[4] - b.transform[4])
+        .map((item) => item.str)
+        .join(" "),
+    )
+    .join("\n");
+}
+
+async function extrairTextoPDF(arquivo) {
+  if (typeof window.pdfjsLib === "undefined") {
+    throw new Error(
+      "Biblioteca de leitura de PDF ainda não carregou. Recarregue a página e tente novamente.",
+    );
+  }
+  const buffer = await arquivo.arrayBuffer();
+  const doc = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+  let linhas = "";
+  let bruto = ""; // ordem "de leitura" do PDF (rótulo e valor ficam próximos,
+  // mesmo quando estão em caixas/colunas que a reconstrução por linha separa)
+  for (let i = 1; i <= doc.numPages; i++) {
+    const pagina = await doc.getPage(i);
+    const conteudo = await pagina.getTextContent();
+    linhas += linhasDaPaginaPDF(conteudo) + "\n";
+    bruto += conteudo.items.map((item) => item.str).join(" ") + " ";
+  }
+  return { linhas, bruto };
+}
+
+// Importação de fatura em PDF: 100% no navegador via pdf.js (sem backend).
+// Extrai o texto de todas as páginas, acha o vencimento da fatura no
+// cabeçalho e casa as linhas de lançamento com uma regex flexível
+// (compatível com Nubank, Inter, Bradesco, BB, etc.).
+async function importarPDF(arquivo) {
+  const { linhas: texto, bruto } = await extrairTextoPDF(arquivo);
+  const hoje = new Date();
+
+  const mVencimento = bruto.match(
+    /vencimento[^\d]{0,20}(\d{2})\/(\d{2})\/(\d{4})/i,
   );
+  const mesFatura = mVencimento
+    ? parseInt(mVencimento[2], 10)
+    : hoje.getMonth() + 1;
+  const anoFatura = mVencimento
+    ? parseInt(mVencimento[3], 10)
+    : hoje.getFullYear();
+  const vencimentoStr = mVencimento
+    ? `${mVencimento[1]}/${mVencimento[2]}/${mVencimento[3]}`
+    : null;
+
+  const REGEX_LANCAMENTO = /(\d{2}\/\d{2})\s+(.+?)\s+R\$?\s*(-?[\d.,]+)/g;
+  const novos = [];
+  let m;
+  while ((m = REGEX_LANCAMENTO.exec(texto)) !== null) {
+    const [, dataCompra, descricaoBruta, valorStr] = m;
+    const descricao = descricaoBruta.trim();
+    if (/SALDO|PGTO|PAGAMENTO|CASH/i.test(descricao)) continue;
+    const valor = valorParaNumero(valorStr, true);
+    if (valor <= 0) continue;
+
+    const [diaStr, mesStr] = dataCompra.split("/");
+    const mesCompra = parseInt(mesStr, 10);
+    // Compras parceladas antigas (mês da compra > mês de fechamento) são do ano anterior.
+    const anoCompra = mesCompra > mesFatura ? anoFatura - 1 : anoFatura;
+    novos.push({
+      TIPO: "DIVERSOS",
+      VALOR: Math.round(valor * 100) / 100,
+      DISCRIMINACAO: descricao,
+      DATA: `${diaStr}/${mesStr}/${anoCompra}`,
+      VENCIMENTO: MESES[mesFatura - 1],
+      ANO: anoFatura,
+      ENTRADA_SAIDA: "DESPESA",
+      OBSERVACAO: "FATURA CARTÃO (PDF)",
+    });
+  }
+
+  if (novos.length === 0) {
+    throw new Error(
+      "Nenhum lançamento encontrado no PDF (verifique se é uma fatura de cartão).",
+    );
+  }
+
+  STATE.cf = [...novos, ...STATE.cf];
+  salvar(LS_KEYS.cf, STATE.cf);
+  return {
+    total: novos.length,
+    soma: novos.reduce((acc, n) => acc + num(n.VALOR), 0),
+    mesVencimento: MESES[mesFatura - 1],
+    anoVencimento: anoFatura,
+    tipoDetectado: vencimentoStr
+      ? `fatura de cartão (PDF) — vencimento ${vencimentoStr} (competência ${MESES[mesFatura - 1]}/${anoFatura})`
+      : "fatura de cartão (PDF) — vencimento não encontrado no PDF, usado mês atual",
+  };
 }
 
 document.getElementById("cfImportBtn").addEventListener("click", () => {

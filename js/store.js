@@ -220,36 +220,27 @@
       .then(function (resp) {
         if (resp.error) throw resp.error;
         if (!resp.data) {
-          // Nenhuma linha com este user_id: normalmente é conta nova, mas se
-          // você tem certeza que já existem dados, o RLS está barrando por
-          // causa de um user_id diferente do da sessão atual (ver console).
+          // Nenhuma linha com este user_id: NÃO grava nada sozinho (já causou
+          // perda de dados reais quando o RLS/user_id estava desalinhado).
+          // Mostra os exemplos só em memória; eles só são persistidos se o
+          // usuário de fato salvar algo (save()/push()) ou clicar em
+          // "Restaurar dados de exemplo" (reset()).
           console.warn(
             "[HGStore] nenhuma linha em hg_dados para user_id=" +
               estado.userId +
               " (usuario=" +
               estado.usuario +
-              "). Se já existem dados na tabela, confira se o user_id da " +
-              "linha bate com este id (auth.users.id da sessão atual).",
+              "). Mostrando exemplos em memória, SEM salvar na nuvem. Se " +
+              "você já tem dados, confira se o user_id da linha em hg_dados " +
+              "bate com este id (auth.users.id da sessão atual) antes de " +
+              "criar qualquer lançamento novo.",
           );
           var sementeDados = semente();
           espelho = sementeDados;
-          return c
-            .from(TABELA)
-            .upsert(
-              {
-                usuario: estado.usuario,
-                user_id: estado.userId,
-                dados: serializar(sementeDados),
-                atualizado_em: new Date().toISOString(),
-              },
-              { onConflict: "user_id" },
-            )
-            .then(function () {
-              estado.erro = null;
-              estado.ultimaSync = new Date().toISOString();
-              emitir();
-              return sementeDados;
-            });
+          estado.erro =
+            "nenhum documento salvo ainda para esta conta (exemplos exibidos, nada foi gravado)";
+          emitir();
+          return sementeDados;
         }
         var dados = normalizar(resp.data.dados);
         espelho = dados;
