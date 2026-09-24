@@ -1496,7 +1496,7 @@ const CORES_GRAFICO = [
 
 // == GRAFICOS-RESPONSIVOS (inicio) ==
 // (o bloco entre estes marcadores é extraído por tools/_test_chart_responsivo.mjs)
-const ALTURA_GRAFICO_PADRAO = 350; // mesma altura de desktop definida no CSS
+const ALTURA_GRAFICO_PADRAO = 360; // mesma altura do .grafico-canvas-container no CSS
 
 // Altura efetiva do canvas: quem manda é o CSS (media queries por breakpoint).
 // clientHeight = 0 quando o canvas está escondido (aba não ativa), então nesse
@@ -1831,26 +1831,16 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
     const minVal = Math.min(0, ...all);
     const maxVal = Math.max(1, ...all);
 
-    // layout (compacto = celular: margens menores para não espremer a área útil)
-    const compacto = w < 460;
-    const padLeft = compacto ? 46 : 56,
-      padRight = compacto ? 10 : 20,
-      padTop = compacto ? 20 : 24,
-      padBottom = compacto ? 46 : 56;
+    // layout sempre em largura original (o wrapper dá scroll no mobile):
+    // equivale a responsive:false — o desenho nunca é espremido.
+    const padLeft = 56,
+      padRight = 20,
+      padTop = 24,
+      padBottom = 56;
     const areaW = w - padLeft - padRight;
     const areaH = h - padTop - padBottom;
 
-    // No celular o valor completo (R$ 10.541,03) não cabe à esquerda do eixo e
-    // sairia cortado; usa-se o formato curto (10,5k) apenas no rótulo do eixo.
-    const rotuloEixoY = (valor) => {
-      if (!compacto) return brMoeda(valor);
-      const abs = Math.abs(valor);
-      if (abs >= 1000)
-        return `${(valor / 1000)
-          .toFixed(abs >= 10000 ? 0 : 1)
-          .replace(".", ",")}k`;
-      return `${Math.round(valor)}`;
-    };
+    const rotuloEixoY = (valor) => brMoeda(valor);
 
     // background subtle gradient
     const bg = ctx.createLinearGradient(0, 0, 0, h);
@@ -1946,14 +1936,11 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
     ctx.stroke(saldoPath);
     ctx.shadowBlur = 0;
 
-    // x labels (no celular o espaço por mês é pequeno: mostra mês sim, mês não
-    // e usa fonte menor — senão os rótulos ficam colados/ilegíveis)
-    const passoRotulo = areaW / Math.max(1, labels.length) < 34 ? 2 : 1;
-    ctx.font = compacto ? "10px Segoe UI" : "11px Segoe UI";
+    // x labels (largura original de 600/650px: todos os 12 meses cabem)
+    ctx.font = "11px Segoe UI";
     ctx.fillStyle = "rgba(255,255,255,0.86)";
     ctx.textAlign = "center";
     labels.forEach((lab, i) => {
-      if (passoRotulo > 1 && i % passoRotulo !== 0) return;
       ctx.fillText(lab.slice(0, 3), mapX(i), padTop + areaH + 18);
     });
 
@@ -2100,21 +2087,14 @@ function drawDonutChart(canvasId, labels, valores) {
 
   const total = valores.reduce((a, b) => a + b, 0);
 
-  // No celular (canvas estreito) o donut fica em cima, centralizado, e a
-  // legenda embaixo em 2 colunas. Antes a legenda começava em 62% da largura
-  // e saía cortada na borda direita da tela.
-  const compacto = w < 520;
-  const COLUNAS_LEGENDA = 2;
-  const LINHA_LEGENDA = compacto ? 18 : 22;
-  const visiveis = labels.filter((_, i) => valores[i] > 0);
-  const alturaLegenda = compacto
-    ? Math.ceil(visiveis.length / COLUNAS_LEGENDA) * LINHA_LEGENDA + 6
-    : 0;
-  const alturaAreaDonut = compacto ? Math.max(110, h - alturaLegenda) : h;
+  // Layout sempre lado a lado (desktop): o wrapper com scroll garante a
+  // largura original (~600/650px) também no celular, então o donut nunca é
+  // espremido — equivale a responsive:false no Chart.js.
+  const LINHA_LEGENDA = 22;
 
-  const cx = compacto ? w / 2 : w * 0.32,
-    cy = alturaAreaDonut / 2,
-    raio = Math.max(24, Math.min(compacto ? w / 2 : cx, cy) - 10),
+  const cx = w * 0.32,
+    cy = h / 2,
+    raio = Math.max(24, Math.min(cx, cy) - 10),
     raioInterno = raio * 0.55;
 
   if (total <= 0) {
@@ -2166,12 +2146,9 @@ function drawDonutChart(canvasId, labels, valores) {
   ctx.font = "bold 13px Segoe UI";
   ctx.fillText(brMoeda(total), cx, cy + 5);
 
-  // legenda com bolinhas coloridas
+  // legenda com bolinhas coloridas (coluna à direita do donut — original)
   let ly = 12;
-  let indiceItem = 0;
-  const larguraColuna = compacto ? (w - 8) / COLUNAS_LEGENDA : 0;
-  const baseTextoCompacto = alturaAreaDonut + LINHA_LEGENDA - 4;
-  ctx.font = compacto ? "11px Segoe UI" : "12px Segoe UI";
+  ctx.font = "12px Segoe UI";
 
   labels.forEach((label, i) => {
     if (valores[i] <= 0) return;
@@ -2179,30 +2156,6 @@ function drawDonutChart(canvasId, labels, valores) {
     const pct = ((valores[i] / total) * 100).toFixed(0);
     const texto = `${label} — ${pct}%`;
 
-    if (compacto) {
-      // layout mobile: 2 colunas abaixo do donut com texto encurtado
-      const item = indiceItem++;
-      const col = item % COLUNAS_LEGENDA;
-      const lin = Math.floor(item / COLUNAS_LEGENDA);
-      const x = 4 + col * larguraColuna;
-      const y = baseTextoCompacto + lin * LINHA_LEGENDA;
-
-      ctx.beginPath();
-      ctx.arc(x + 6, y - 4, 5, 0, Math.PI * 2);
-      ctx.fillStyle = cor;
-      ctx.fill();
-
-      ctx.fillStyle = corLegenda;
-      ctx.textAlign = "left";
-      ctx.fillText(
-        encurtarTexto(ctx, texto, Math.max(20, larguraColuna - 22)),
-        x + 16,
-        y,
-      );
-      return;
-    }
-
-    // layout desktop: coluna à direita do donut (original)
     ctx.beginPath();
     ctx.arc(w * 0.62 + 6, ly + 6, 6, 0, Math.PI * 2);
     ctx.fillStyle = cor;
