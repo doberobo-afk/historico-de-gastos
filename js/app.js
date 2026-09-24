@@ -1338,6 +1338,30 @@ async function importarPDF(arquivo) {
     ? `${mVencimento[1]}/${mVencimento[2]}/${mVencimento[3]}`
     : null;
 
+  // Classificação heurística do TIPO a partir das palavras-chave da descrição
+  // (heurística simples; o usuário pode ajustar o TIPO depois na aba
+  // Controle Financeiro).
+  function detectarTipo(desc) {
+    const d = desc.toUpperCase();
+    if (d.match(/UBER|99|TAXI|COMBUST|POSTO|SHELL|IPIRANGA/)) return "TRANSPORTE";
+    if (d.match(/IFOOD|RAPPI|RESTAUR|LANCH|MERCADO|SUPERM|ATACADAO|ASSAI|PADARIA|ACAI/))
+      return "ALIMENTAÇÃO";
+    if (d.match(/FARMACIA|DROGASIL|DROGA|PAGUE MENOS/)) return "SAÚDE";
+    if (d.match(/NETFLIX|SPOTIFY|GLOBOPLAY|PRIME|YOUTUBE|DISNEY|HBO|AMAZON PRIME/))
+      return "LAZER";
+    if (d.match(/LUZ|ENERGIA|AGUA|INTERNET|CLARO|VIVO|TIM|OI/))
+      return "CONTAS FIXAS";
+    if (d.match(/SHEIN|SHOPEE|MERCADO LIVRE|AMAZON|MAGALU|AMERICANAS/))
+      return "COMPRAS";
+    return "GASTOS VARIÁVEIS";
+  }
+
+  // Descrição normalizada (maiúsculas, sem espaços nas bordas nem duplicados
+  // vindos da reconstrução das colunas do PDF).
+  function normalizarDescricao(desc) {
+    return desc.toUpperCase().trim().replace(/\s{2,}/g, " ");
+  }
+
   const REGEX_LANCAMENTO = /(\d{2}\/\d{2})\s+(.+?)\s+R\$?\s*(-?[\d.,]+)/g;
   const novos = [];
   let m;
@@ -1353,9 +1377,9 @@ async function importarPDF(arquivo) {
     // Compras parceladas antigas (mês da compra > mês de fechamento) são do ano anterior.
     const anoCompra = mesCompra > mesFatura ? anoFatura - 1 : anoFatura;
     novos.push({
-      TIPO: "DIVERSOS",
+      TIPO: detectarTipo(descricao),
       VALOR: Math.round(valor * 100) / 100,
-      DISCRIMINACAO: descricao,
+      DISCRIMINACAO: normalizarDescricao(descricao),
       DATA: `${diaStr}/${mesStr}/${anoCompra}`,
       VENCIMENTO: MESES[mesFatura - 1],
       ANO: anoFatura,
