@@ -4,10 +4,11 @@
 // Estratégia:
 //   • arquivos estáticos (HTML/CSS/JS/ícones) -> cache primeiro, com
 //     atualização em segundo plano (stale-while-revalidate);
-//   • navegação -> rede primeiro, caindo para a versão em cache (offline);
-//   • /api/*    -> sempre rede (dados financeiros não podem ficar velhos).
+//   • navegação -> rede primeiro, caindo para a versão em cache (offline).
+// Observação: o registro deste SW está temporariamente desativado em
+// js/app.js (unregister automático) até a migração para Supabase estabilizar.
 // ==========================================================================
-const VERSAO = "hg-v3";
+const VERSAO = "hg-v4";
 const CACHE = `controle-financeiro-${VERSAO}`;
 
 const SHELL = [
@@ -58,23 +59,6 @@ self.addEventListener("fetch", (evento) => {
 
   if (requisicao.method !== "GET" || url.origin !== self.location.origin)
     return;
-
-  // Dados financeiros: sempre da rede
-  if (url.pathname.startsWith("/api/")) {
-    evento.respondWith(
-      fetch(requisicao).catch(
-        () =>
-          new Response(
-            JSON.stringify({ ok: false, modo: "local", erro: "sem conexão" }),
-            {
-              status: 503,
-              headers: { "Content-Type": "application/json; charset=utf-8" },
-            },
-          ),
-      ),
-    );
-    return;
-  }
 
   // Navegação: rede primeiro, cache como reserva (funciona offline)
   if (requisicao.mode === "navigate") {

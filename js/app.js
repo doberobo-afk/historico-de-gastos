@@ -1,7 +1,6 @@
 // ==========================================================================
 // Controle Financeiro - App
-// Persistência: /api/sync (Vercel Function + Supabase) com fallback
-// automático para o localStorage - ver webapp/js/store.js
+// Persistência: Supabase direto (tabela hg_dados) - ver js/store.js
 // ==========================================================================
 
 const MESES = [
@@ -1276,48 +1275,12 @@ function importarCSV(texto) {
   };
 }
 
-// Envia o PDF para /api/extrair (processado em memória, nunca salvo em disco)
-async function importarPDF(arquivo) {
-  const hoje = new Date();
-  const formData = new FormData();
-  formData.append("arquivo", arquivo, arquivo.name);
-  formData.append("ano", String(hoje.getFullYear()));
-  formData.append("mes", String(hoje.getMonth() + 1));
-
-  const resposta = await fetch("/api/extrair", {
-    method: "POST",
-    body: formData,
-  });
-  const dados = await resposta.json().catch(() => null);
-  if (!dados || !dados.ok) {
-    throw new Error(
-      (dados && (dados.erro || dados.detalhe)) || "Falha ao extrair o PDF.",
-    );
-  }
-
-  const novos = processarFaturaCartao(dados.lancamentos || []);
-  // Usa o vencimento real da fatura (competência) para classificar os lançamentos,
-  // mas NÃO altera o campo DATA — ele continua sendo a data da compra.
-  const mesVencimento = MESES[(parseInt(dados.mes, 10) || 0) - 1];
-  const anoVencimento = parseInt(dados.ano, 10);
-  if (mesVencimento) {
-    novos.forEach((n) => {
-      n.VENCIMENTO = mesVencimento;
-      if (anoVencimento) n.ANO = anoVencimento;
-    });
-  }
-
-  STATE.cf = [...novos, ...STATE.cf];
-  salvar(LS_KEYS.cf, STATE.cf);
-  return {
-    total: novos.length,
-    soma: novos.reduce((acc, n) => acc + num(n.VALOR), 0),
-    mesVencimento,
-    anoVencimento,
-    tipoDetectado: dados.vencimento_detectado
-      ? `fatura de cartão (PDF) — vencimento ${dados.vencimento} (competência ${mesVencimento}/${anoVencimento})`
-      : "fatura de cartão (PDF) — vencimento não encontrado no PDF, usado mês atual",
-  };
+// Importação de fatura em PDF: desativada (o backend /api/extrair foi removido).
+// Use a importação de CSV, que roda 100% no navegador.
+async function importarPDF(_arquivo) {
+  throw new Error(
+    "Importação de PDF indisponível no momento. Use a importação de CSV.",
+  );
 }
 
 document.getElementById("cfImportBtn").addEventListener("click", () => {
@@ -2345,7 +2308,7 @@ function renderStatusSync(s) {
     : "💾 Local (offline)";
   el.title = nuvem
     ? `Dados na nuvem (Supabase) · usuário ${s.usuario}`
-    : `Sem /api/sync (${s.erro || "offline"}): os dados ficam salvos neste navegador`;
+    : `Sem conexão com o Supabase (${s.erro || "offline"}): faça login novamente`;
 }
 
 if (window.HGStore) HGStore.onChange(renderStatusSync);
@@ -2353,15 +2316,26 @@ if (window.HGStore) HGStore.onChange(renderStatusSync);
 // ---------------------------------------------------------------------
 // PWA: service worker (instalação no celular)
 // ---------------------------------------------------------------------
-if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("sw.js")
-      .catch((e) =>
-        console.warn("[PWA] service worker não registrado:", e.message),
-      );
+// Desativado temporariamente: o SW antigo estava cacheando respostas de
+// erro (501) das antigas rotas /api/sync e /api/extrair, que já foram
+// removidas. Também derruba qualquer registro anterior no navegador.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => reg.unregister());
   });
+  if ("caches" in window) {
+    caches.keys().then((nomes) => nomes.forEach((n) => caches.delete(n)));
+  }
 }
+// if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+//   window.addEventListener("load", () => {
+//     navigator.serviceWorker
+//       .register("sw.js")
+//       .catch((e) =>
+//         console.warn("[PWA] service worker não registrado:", e.message),
+//       );
+//   });
+// }
 
 // Sidebar shortcuts removed from UI; no listeners attached
 
@@ -2561,7 +2535,7 @@ function mensagemLogin(texto, tipo) {
 
 async function entrarComSessao(sessao) {
   if (!sessao || !window.HGStore) return false;
-  HGStore.definirSessao(sessao.usuario, sessao.token);
+  HGStore.definirSessao(sessao.usuario, sessao.id);
   mostrarApp();
   await iniciar();
   return true;

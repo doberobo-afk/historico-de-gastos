@@ -29,6 +29,7 @@
   function sessaoParaUsuario(sessao) {
     if (!sessao || !sessao.access_token || !sessao.user) return null;
     return {
+      id: sessao.user.id,
       usuario: sessao.user.email || sessao.user.id,
       token: sessao.access_token,
     };
@@ -102,5 +103,7 @@
     esqueciSenha: esqueciSenha,
     sair: sair,
     aoMudarSessao: aoMudarSessao,
+    // Exposto para o HGStore falar direto com o Supabase (sem /api/sync).
+    client: cliente,
   };
 })(window);

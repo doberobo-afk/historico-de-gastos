@@ -253,7 +253,7 @@ body:not(.dark-theme) .btn.secondary { color: #22262e; background: #e9e9e9; }
   border: 1px solid var(--painel-borda); border-radius: var(--raio-sm);
 }
 .chart-box h3 { margin: 0 0 8px; font-size: 0.95rem; }
-.chart-box canvas { display: block; width: 100%; border-radius: var(--raio-sm); }
+.chart-box canvas { display: block; width: 100%; height: 350px; border-radius: var(--raio-sm); }
 
 /* ------------------------------ Paginação -------------------------------- */
 .pager {

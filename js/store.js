@@ -3,13 +3,15 @@
 // --------------------------------------------------------------------------
 // Segurança  : safeParse() (JSON nunca derruba a aplicação) e esc() (escape
 //              de HTML para tudo que vem do usuário/planilha)
-// Persistência: fetch('/api/sync') -> Vercel Function -> Supabase
-//              fallback automático para localStorage (offline/demo/file://)
+// Persistência: Supabase direto (tabela public.hg_dados, RLS por user_id) via
+//              HGAuth.client() (js/auth-config.js). Sem /api/sync, sem
+//              LocalStorage: sem usuário logado, não há dados a carregar.
 // ==========================================================================
 (function (global) {
   "use strict";
 
-  // Mesmas chaves usadas como cache local (compatível com versões antigas)
+  // Mesmas chaves usadas antes como cache local; mantidas só como
+  // identificadores dos campos de STATE (cf/cd/cad/meta) em salvar()/save().
   var CHAVES = {
     cf: "hg_controle_financeiro",
     cd: "hg_controle_dividas",
@@ -17,14 +19,13 @@
     meta: "hg_meta",
   };
   var CAMPOS = ["cf", "cd", "cad", "meta"];
-  var API = "/api/sync";
-  var TIMEOUT_MS = 6000; // não deixa a tela "presa" esperando a nuvem
-  var DEBOUNCE_MS = 900; // agrupa várias alterações em um único POST
+  var TABELA = "hg_dados";
+  var DEBOUNCE_MS = 900; // agrupa várias alterações em um único upsert
 
   var estado = {
-    modo: "local", // "nuvem" | "local"
+    modo: "deslogado", // "nuvem" | "deslogado"
     usuario: null,
-    token: null,
+    userId: null,
     erro: null,
     ultimaSync: null,
     pendente: false,
@@ -85,53 +86,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Cache local (offline/demo)
-  // ---------------------------------------------------------------------
-  function chaveLocal(chave) {
-    try {
-      return global.localStorage.getItem(chave);
-    } catch (e) {
-      return null; // navegador em modo privado / storage bloqueado
-    }
-  }
-
-  function lerLocal() {
-    return {
-      cf: safeParse(chaveLocal(CHAVES.cf), []),
-      cd: safeParse(chaveLocal(CHAVES.cd), []),
-      cad: safeParse(chaveLocal(CHAVES.cad), {}),
-      meta: safeParse(chaveLocal(CHAVES.meta), {}),
-    };
-  }
-
-  function gravarLocal(dados) {
-    CAMPOS.forEach(function (campo) {
-      try {
-        global.localStorage.setItem(
-          CHAVES[campo],
-          JSON.stringify(dados[campo]),
-        );
-      } catch (e) {
-        console.warn(
-          "[HGStore] não foi possível gravar o cache local:",
-          e.message,
-        );
-      }
-    });
-  }
-
-  function limparLocal() {
-    CAMPOS.forEach(function (campo) {
-      try {
-        global.localStorage.removeItem(CHAVES[campo]);
-      } catch (e) {
-        /* ignora */
-      }
-    });
-  }
-
-  // ---------------------------------------------------------------------
-  // Semente (exemplos fictícios) - usada quando não há dados
+  // Semente (exemplos fictícios) - usada só no primeiro acesso de uma conta
   // ---------------------------------------------------------------------
   function semente() {
     var exemplos = global.DADOS_INICIAIS || {};
@@ -141,6 +96,10 @@
       cad: exemplos.cadastros || {},
       meta: exemplos.resumo_meta || {},
     };
+  }
+
+  function vazio() {
+    return { cf: [], cd: [], cad: {}, meta: {} };
   }
 
   function normalizar(dados) {
@@ -154,54 +113,22 @@
     };
   }
 
-  function temDados(dados) {
-    return !!(dados && (dados.cf.length || dados.cd.length));
-  }
-
   function serializar(dados) {
     return {
-      dados: {
-        controle_financeiro: dados.cf || [],
-        controle_dividas: dados.cd || [],
-        cadastros: dados.cad || {},
-        resumo_meta: dados.meta || {},
-      },
+      controle_financeiro: dados.cf || [],
+      controle_dividas: dados.cd || [],
+      cadastros: dados.cad || {},
+      resumo_meta: dados.meta || {},
     };
   }
 
   // ---------------------------------------------------------------------
-  // Comunicação com /api/sync (exige sessão autenticada - ver definirSessao)
+  // Cliente Supabase (compartilhado com HGAuth - js/auth-config.js)
   // ---------------------------------------------------------------------
-  function requisitar(metodo, corpo) {
-    if (!estado.token) {
-      return Promise.reject(new Error("sem sessão autenticada"));
-    }
-    var controlador =
-      typeof AbortController !== "undefined" ? new AbortController() : null;
-    var timer = controlador
-      ? global.setTimeout(function () {
-          controlador.abort();
-        }, TIMEOUT_MS)
-      : null;
-
-    return global
-      .fetch(API, {
-        method: metodo,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + estado.token,
-        },
-        body: corpo ? JSON.stringify(corpo) : undefined,
-        signal: controlador ? controlador.signal : undefined,
-      })
-      .then(function (resp) {
-        if (resp.status === 401) throw new Error("sessão expirada (401)");
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        return resp.json();
-      })
-      .finally(function () {
-        if (timer) global.clearTimeout(timer);
-      });
+  function cliente() {
+    if (!global.HGAuth || typeof global.HGAuth.client !== "function")
+      return null;
+    return global.HGAuth.client();
   }
 
   function status() {
@@ -227,18 +154,19 @@
   // ---------------------------------------------------------------------
   // API pública
   // ---------------------------------------------------------------------
-  // Chamado após login/signup bem-sucedido (usuario = e-mail, token = access_token)
-  function definirSessao(usuario, token) {
+  // Chamado após login/signup bem-sucedido (usuario = e-mail, userId = auth.uid())
+  function definirSessao(usuario, userId) {
     estado.usuario = String(usuario || "").trim() || null;
-    estado.token = String(token || "").trim() || null;
+    estado.userId = String(userId || "").trim() || null;
+    estado.modo = estado.userId ? "nuvem" : "deslogado";
     return estado.usuario;
   }
 
-  // Chamado no logout: derruba a sessão e limpa o cache local do usuário
+  // Chamado no logout: derruba a sessão (nada fica salvo no navegador)
   function limparSessao() {
     estado.usuario = null;
-    estado.token = null;
-    estado.modo = "local";
+    estado.userId = null;
+    estado.modo = "deslogado";
     estado.erro = null;
     estado.ultimaSync = null;
     estado.pendente = false;
@@ -247,49 +175,68 @@
       global.clearTimeout(timerPush);
       timerPush = null;
     }
-    limparLocal();
-    espelho = { cf: [], cd: [], cad: {}, meta: {} };
+    espelho = vazio();
     emitir();
   }
 
-  // Carrega da nuvem; se a nuvem não existir/responder, usa o cache local
-  // e, se também não houver nada, publica os exemplos fictícios.
+  // Sem usuário logado: não busca nada. Com usuário: carrega o documento do
+  // Supabase e, no primeiro acesso (nenhuma linha ainda), publica a semente.
   function load() {
-    var local = lerLocal();
-    return requisitar("GET")
+    if (estado.modo !== "nuvem" || !estado.userId) {
+      espelho = vazio();
+      emitir();
+      return Promise.resolve(espelho);
+    }
+    var c = cliente();
+    if (!c) {
+      estado.erro = "Supabase indisponível";
+      emitir();
+      return Promise.resolve(vazio());
+    }
+    return c
+      .from(TABELA)
+      .select("dados")
+      .eq("user_id", estado.userId)
+      .maybeSingle()
       .then(function (resp) {
-        var dados = normalizar(resp && resp.dados);
-        estado.modo = "nuvem";
-        estado.erro = null;
-        if (!temDados(dados)) {
-          // Primeiro acesso: publica a semente de exemplos
-          dados = semente();
-          espelho = dados;
-          gravarLocal(dados);
-          return requisitar("POST", serializar(dados)).then(function () {
-            estado.ultimaSync = new Date().toISOString();
-            emitir();
-            return dados;
-          });
+        if (resp.error) throw resp.error;
+        if (!resp.data) {
+          // Primeiro acesso desta conta: publica a semente de exemplos
+          var sementeDados = semente();
+          espelho = sementeDados;
+          return c
+            .from(TABELA)
+            .upsert(
+              {
+                user_id: estado.userId,
+                dados: serializar(sementeDados),
+                atualizado_em: new Date().toISOString(),
+              },
+              { onConflict: "user_id" },
+            )
+            .then(function () {
+              estado.erro = null;
+              estado.ultimaSync = new Date().toISOString();
+              emitir();
+              return sementeDados;
+            });
         }
+        var dados = normalizar(resp.data.dados);
         espelho = dados;
-        gravarLocal(dados);
+        estado.erro = null;
         estado.ultimaSync = new Date().toISOString();
         emitir();
         return dados;
       })
       .catch(function (e) {
-        estado.modo = "local";
-        estado.erro = e && e.message ? e.message : "indisponível";
-        var dados = temDados(local) ? local : semente();
-        espelho = dados;
-        if (!temDados(local)) gravarLocal(dados);
+        estado.erro = e && e.message ? e.message : "falha ao carregar";
+        espelho = vazio();
         emitir();
-        return dados;
+        return espelho;
       });
   }
 
-  // Grava no cache local e agenda o envio para /api/sync (debounce)
+  // Guarda em memória e agenda o upsert no Supabase (debounce)
   function save(chaveLS, valor) {
     var campo = null;
     CAMPOS.forEach(function (c) {
@@ -300,13 +247,7 @@
     espelho[campo] = valor;
     pendentes[campo] = valor;
 
-    try {
-      global.localStorage.setItem(chaveLS, JSON.stringify(valor));
-    } catch (e) {
-      /* cache local é opcional */
-    }
-
-    if (estado.modo !== "nuvem") return;
+    if (estado.modo !== "nuvem" || !estado.userId) return;
     estado.pendente = true;
     emitir();
     if (timerPush) global.clearTimeout(timerPush);
@@ -314,15 +255,28 @@
   }
 
   function push() {
-    if (estado.modo !== "nuvem") return Promise.resolve(false);
+    if (estado.modo !== "nuvem" || !estado.userId)
+      return Promise.resolve(false);
+    var c = cliente();
+    if (!c) return Promise.resolve(false);
     var dados = {
       cf: pendentes.cf !== undefined ? pendentes.cf : espelho.cf,
       cd: pendentes.cd !== undefined ? pendentes.cd : espelho.cd,
       cad: pendentes.cad !== undefined ? pendentes.cad : espelho.cad,
       meta: pendentes.meta !== undefined ? pendentes.meta : espelho.meta,
     };
-    return requisitar("POST", serializar(dados))
-      .then(function () {
+    return c
+      .from(TABELA)
+      .upsert(
+        {
+          user_id: estado.userId,
+          dados: serializar(dados),
+          atualizado_em: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      )
+      .then(function (resp) {
+        if (resp.error) throw resp.error;
         pendentes = {};
         estado.pendente = false;
         estado.erro = null;
@@ -332,40 +286,43 @@
       })
       .catch(function (e) {
         estado.erro = e && e.message ? e.message : "falha ao sincronizar";
-        estado.modo = "local"; // segue funcionando offline
         emitir();
         return false;
       });
   }
 
-  // Apaga tudo (nuvem + cache) e volta para os exemplos fictícios
+  // Apaga o documento do usuário na nuvem e volta para os exemplos fictícios
   function reset() {
-    limparLocal();
     pendentes = {};
     var sementeDados = semente();
     espelho = sementeDados;
 
-    if (estado.modo !== "nuvem") {
-      gravarLocal(sementeDados);
-      estado.ultimaSync = null;
+    if (estado.modo !== "nuvem" || !estado.userId) {
       emitir();
       return Promise.resolve(sementeDados);
     }
-    return requisitar("DELETE")
-      .then(function () {
-        return requisitar("POST", serializar(sementeDados));
-      })
-      .then(function () {
-        gravarLocal(sementeDados);
+    var c = cliente();
+    if (!c) return Promise.resolve(sementeDados);
+    return c
+      .from(TABELA)
+      .upsert(
+        {
+          user_id: estado.userId,
+          dados: serializar(sementeDados),
+          atualizado_em: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      )
+      .then(function (resp) {
+        if (resp.error) throw resp.error;
         estado.pendente = false;
+        estado.erro = null;
         estado.ultimaSync = new Date().toISOString();
         emitir();
         return sementeDados;
       })
       .catch(function (e) {
         estado.erro = e && e.message ? e.message : "falha ao restaurar";
-        estado.modo = "local";
-        gravarLocal(sementeDados);
         emitir();
         return sementeDados;
       });
@@ -385,7 +342,6 @@
 
   global.HGStore = {
     CHAVES: CHAVES,
-    API: API,
     safeParse: safeParse,
     esc: esc,
     num: num,
