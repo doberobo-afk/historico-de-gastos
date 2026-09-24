@@ -154,6 +154,21 @@ a { color: var(--azul); }
 .login-mensagem { font-size: 0.85rem; min-height: 1.1em; }
 .login-mensagem.erro { color: var(--vermelho); }
 .login-mensagem.sucesso { color: var(--verde); }
+/* Visualizador de senha (equivale ao PasswordInput com olho):
+   wrapper .relative + input .pr-10 + botão .eye-btn (Eye/EyeOff 20px).
+   O botão usa mousedown+preventDefault no JS para não roubar o foco. */
+.relative { position: relative; }
+.login-card .relative { width: 100%; }
+.login-card .relative input { width: 100%; }
+.login-card input.pr-10 { padding-right: 2.5rem; }
+.eye-btn {
+  position: absolute; inset-block: 0; right: 0;
+  padding-right: 0.75rem; display: flex; align-items: center;
+  background: transparent; border: none; cursor: pointer; color: #a1a1aa;
+}
+.eye-btn:hover { color: #ffffff; }
+body:not(.dark-theme) .eye-btn:hover { color: #18181b; }
+.eye-btn svg { width: 20px; height: 20px; display: block; }
 /* Mesma tela de senha, mas sobreposta ao app (botão "Alterar senha") */
 .login-screen.overlay {
   position: fixed; inset: 0; z-index: 60; overflow: auto;

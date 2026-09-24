@@ -25,7 +25,10 @@
       <input type="email" id="loginEmail" required autocomplete="username" />
     </label>
     <label>Senha
-      <input type="password" id="loginSenha" required autocomplete="current-password" minlength="6" />
+      <div class="relative">
+        <input type="password" id="loginSenha" class="pr-10" required autocomplete="current-password" minlength="6" />
+        <button type="button" id="toggleLoginSenha" class="eye-btn" aria-label="Mostrar senha" title="Mostrar senha"></button>
+      </div>
     </label>
     <div id="loginMensagem" class="login-mensagem" role="alert"></div>
     <div class="login-acoes">
@@ -45,10 +48,16 @@
       Escolha uma nova senha para a sua conta (mínimo de 6 caracteres).
     </p>
     <label>Nova senha
-      <input type="password" id="recSenha" required autocomplete="new-password" minlength="6" />
+      <div class="relative">
+        <input type="password" id="recSenha" class="pr-10" required autocomplete="new-password" minlength="6" />
+        <button type="button" id="toggleRecSenha" class="eye-btn" aria-label="Mostrar senha" title="Mostrar senha"></button>
+      </div>
     </label>
     <label>Confirmar nova senha
-      <input type="password" id="recSenha2" required autocomplete="new-password" minlength="6" />
+      <div class="relative">
+        <input type="password" id="recSenha2" class="pr-10" required autocomplete="new-password" minlength="6" />
+        <button type="button" id="toggleRecSenha2" class="eye-btn" aria-label="Mostrar senha" title="Mostrar senha"></button>
+      </div>
     </label>
     <div id="recMensagem" class="login-mensagem" role="alert"></div>
     <div class="login-acoes">

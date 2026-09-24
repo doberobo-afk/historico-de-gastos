@@ -2840,6 +2840,49 @@ function mostrarAvisoDados(ok) {
 }
 
 // ---------------------------------------------------------------------
+// Visualizador de senha (equivale ao PasswordInput com olho)
+// ---------------------------------------------------------------------
+// Ícones lucide Eye / EyeOff (20px) em SVG inline — mesma origem do
+// componente PasswordInput (lucide-react), sem dependência nova.
+const SVG_OLHO_ABERTO =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const SVG_OLHO_FECHADO =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>';
+
+// showPassword=false -> type="password", ícone Eye, "Mostrar senha".
+// mousedown com preventDefault: o clique não rouba o foco do input.
+function ligarOlhoSenha(idInput, idBotao) {
+  const input = document.getElementById(idInput);
+  const botao = document.getElementById(idBotao);
+  if (!input || !botao) return;
+  const desenhar = () => {
+    const visivel = input.type === "text";
+    botao.innerHTML = visivel ? SVG_OLHO_FECHADO : SVG_OLHO_ABERTO;
+    const rotulo = visivel ? "Esconder senha" : "Mostrar senha";
+    botao.setAttribute("aria-label", rotulo);
+    botao.setAttribute("title", rotulo);
+  };
+  if (!botao.dataset.olhoLigado) {
+    botao.dataset.olhoLigado = "1";
+    botao.addEventListener("mousedown", (ev) => ev.preventDefault());
+    botao.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+      desenhar();
+      try {
+        input.focus({ preventScroll: true });
+      } catch (e) {
+        input.focus();
+      }
+    });
+  }
+  desenhar();
+}
+
+ligarOlhoSenha("loginSenha", "toggleLoginSenha");
+ligarOlhoSenha("recSenha", "toggleRecSenha");
+ligarOlhoSenha("recSenha2", "toggleRecSenha2");
+
+// ---------------------------------------------------------------------
 // Tela de senha (link de recuperação por e-mail e botão "Alterar senha")
 // ---------------------------------------------------------------------
 let ignorarEventosAuth = false; // evita reagir ao signOut que nós mesmos fizemos
@@ -2871,8 +2914,16 @@ function mostrarTelaSenha(sobreposta) {
   mensagemRecuperacao("");
   const s1 = document.getElementById("recSenha");
   const s2 = document.getElementById("recSenha2");
-  if (s1) s1.value = "";
-  if (s2) s2.value = "";
+  if (s1) {
+    s1.value = "";
+    s1.type = "password"; // reabrir a tela sempre volta a ocultar
+    ligarOlhoSenha("recSenha", "toggleRecSenha");
+  }
+  if (s2) {
+    s2.value = "";
+    s2.type = "password";
+    ligarOlhoSenha("recSenha2", "toggleRecSenha2");
+  }
   const hint = document.getElementById("recHint");
   if (hint) {
     hint.textContent = sobreposta
