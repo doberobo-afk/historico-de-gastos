@@ -208,11 +208,12 @@
             .from(TABELA)
             .upsert(
               {
+                usuario: estado.usuario,
                 user_id: estado.userId,
                 dados: serializar(sementeDados),
                 atualizado_em: new Date().toISOString(),
               },
-              { onConflict: "user_id" },
+              { onConflict: "usuario" },
             )
             .then(function () {
               estado.erro = null;
@@ -269,11 +270,12 @@
       .from(TABELA)
       .upsert(
         {
+          usuario: estado.usuario,
           user_id: estado.userId,
           dados: serializar(dados),
           atualizado_em: new Date().toISOString(),
         },
-        { onConflict: "user_id" },
+        { onConflict: "usuario" },
       )
       .then(function (resp) {
         if (resp.error) throw resp.error;
@@ -307,11 +309,12 @@
       .from(TABELA)
       .upsert(
         {
+          usuario: estado.usuario,
           user_id: estado.userId,
           dados: serializar(sementeDados),
           atualizado_em: new Date().toISOString(),
         },
-        { onConflict: "user_id" },
+        { onConflict: "usuario" },
       )
       .then(function (resp) {
         if (resp.error) throw resp.error;
