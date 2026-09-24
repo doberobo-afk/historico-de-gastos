@@ -6,6 +6,9 @@
 // Persistência: Supabase direto (tabela public.hg_dados, RLS por user_id) via
 //              HGAuth.client() (js/auth-config.js). Sem /api/sync, sem
 //              LocalStorage: sem usuário logado, não há dados a carregar.
+// IMPORTANTE: hg_dados precisa de UNIQUE (user_id) para o upsert funcionar
+//             (onConflict é sempre por user_id, o dono usado pelo RLS):
+//   ALTER TABLE public.hg_dados ADD CONSTRAINT hg_dados_user_id_unique UNIQUE (user_id);
 // ==========================================================================
 (function (global) {
   "use strict";
@@ -35,6 +38,22 @@
   var pendentes = {}; // campos alterados aguardando envio
   var timerPush = null;
   var ouvintes = [];
+
+  // Traduz o erro 42P10 do Postgres (falta UNIQUE na coluna do onConflict)
+  // numa mensagem acionável, em vez do texto críptico do PostgREST.
+  function mensagemErro(e) {
+    var base = (e && e.message) || String(e || "");
+    if (
+      e &&
+      (e.code === "42P10" || /no unique|exclusion constraint/i.test(base))
+    ) {
+      return (
+        "hg_dados sem UNIQUE(user_id) - rode no SQL Editor do Supabase: " +
+        "ALTER TABLE public.hg_dados ADD CONSTRAINT hg_dados_user_id_unique UNIQUE (user_id);"
+      );
+    }
+    return base || "erro desconhecido";
+  }
 
   // ---------------------------------------------------------------------
   // Utilitários de segurança
@@ -213,7 +232,7 @@
                 dados: serializar(sementeDados),
                 atualizado_em: new Date().toISOString(),
               },
-              { onConflict: "usuario" },
+              { onConflict: "user_id" },
             )
             .then(function () {
               estado.erro = null;
@@ -230,7 +249,7 @@
         return dados;
       })
       .catch(function (e) {
-        estado.erro = e && e.message ? e.message : "falha ao carregar";
+        estado.erro = mensagemErro(e);
         espelho = vazio();
         emitir();
         return espelho;
@@ -275,7 +294,7 @@
           dados: serializar(dados),
           atualizado_em: new Date().toISOString(),
         },
-        { onConflict: "usuario" },
+        { onConflict: "user_id" },
       )
       .then(function (resp) {
         if (resp.error) throw resp.error;
@@ -287,7 +306,7 @@
         return true;
       })
       .catch(function (e) {
-        estado.erro = e && e.message ? e.message : "falha ao sincronizar";
+        estado.erro = mensagemErro(e);
         emitir();
         return false;
       });
@@ -314,7 +333,7 @@
           dados: serializar(sementeDados),
           atualizado_em: new Date().toISOString(),
         },
-        { onConflict: "usuario" },
+        { onConflict: "user_id" },
       )
       .then(function (resp) {
         if (resp.error) throw resp.error;
@@ -325,7 +344,7 @@
         return sementeDados;
       })
       .catch(function (e) {
-        estado.erro = e && e.message ? e.message : "falha ao restaurar";
+        estado.erro = mensagemErro(e);
         emitir();
         return sementeDados;
       });

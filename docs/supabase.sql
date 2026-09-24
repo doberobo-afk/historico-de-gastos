@@ -18,6 +18,19 @@ alter table public.hg_dados
 
 create index if not exists hg_dados_user_id_idx on public.hg_dados (user_id);
 
+-- Necessário para o upsert do front-end (onConflict: "user_id") — sem essa
+-- UNIQUE o Postgres rejeita o upsert com o erro 42P10. ADD CONSTRAINT não
+-- aceita IF NOT EXISTS, por isso o DO block abaixo.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'hg_dados_user_id_unique'
+  ) then
+    alter table public.hg_dados
+      add constraint hg_dados_user_id_unique unique (user_id);
+  end if;
+end $$;
+
 -- Log das execuções do cron (/api/cron)
 create table if not exists public.hg_cron_log (
   id                   bigserial   primary key,
