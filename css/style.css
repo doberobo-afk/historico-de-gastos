@@ -250,7 +250,8 @@ body:not(.dark-theme) .btn.secondary { color: #22262e; background: #e9e9e9; }
   gap: 16px; margin-bottom: 20px;
 }
 .card {
-  min-height: 96px; padding: 18px 20px; background: var(--cartao-bg);
+  min-width: 0; overflow: hidden; min-height: 96px; padding: 18px 20px;
+  background: var(--cartao-bg);
   border: 1px solid var(--painel-borda); border-left: 6px solid var(--dourado);
   border-radius: var(--raio-sm);
 }
@@ -263,13 +264,24 @@ body:not(.dark-theme) .btn.secondary { color: #22262e; background: #e9e9e9; }
 .card.negativo .value { color: var(--vermelho); }
 
 /* ------------------------------- Gráficos -------------------------------- */
+/* min-width: 0 nos itens do grid: o canvas tem um buffer interno
+   (largura × devicePixelRatio) que, sem isso, define o "min-content" da coluna
+   e estoura/corta o gráfico no celular (dpr 2~3). */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-2 > * { min-width: 0; }
 .chart-box {
-  padding: 14px; background: var(--superficie-2);
+  padding: 14px; background: var(--superficie-2); overflow: visible;
   border: 1px solid var(--painel-borda); border-radius: var(--raio-sm);
 }
 .chart-box h3 { margin: 0 0 8px; font-size: 0.95rem; }
-.chart-box canvas { display: block; width: 100%; height: 350px; border-radius: var(--raio-sm); }
+/* Largura sempre 100% do container. A ALTURA é definida aqui (e ajustada por
+   breakpoint mais abaixo) e o js/app.js lê exatamente essa altura para
+   dimensionar o buffer do canvas — por isso nunca fixar height inline no JS. */
+.chart-box canvas {
+  display: block; width: 100%; max-width: 100%;
+  height: 350px; border-radius: var(--raio-sm);
+}
+canvas { max-width: 100%; }
 
 /* ------------------------------ Paginação -------------------------------- */
 .pager {
@@ -416,8 +428,24 @@ tbody tr.ultima-parcela:hover {
 }
 
 /* ------------------------------ Responsivo ------------------------------- */
-@media (max-width: 1100px) {
-  .grid-2 { grid-template-columns: 1fr; }
+/* Desktop (> 1024px): 2 colunas de gráficos lado a lado, altura 350px (original) */
+
+/* Tablet (768–1024px): 2 colunas, mas com altura menor para caber na largura */
+@media (max-width: 1024px) {
+  .grid-2 { gap: 16px; }
+  .chart-box { padding: 12px; }
+  .chart-box canvas { height: 320px; }
+}
+
+/* Mobile (< 768px): 1 coluna, cada gráfico com 100% da largura, sem cortes
+   laterais e com altura mínima garantida (pizza 320px / barra 280px) */
+@media (max-width: 768px) {
+  .grid-2 { grid-template-columns: 1fr; gap: 16px; }
+  .chart-box { padding: 12px; }
+  .chart-box h3 { font-size: 0.9rem; }
+  #chartCategorias { height: 340px; min-height: 320px; }
+  #chartAnual { height: 300px; min-height: 280px; }
+  .card .value { font-size: 1.45rem; }
 }
 
 @media (max-width: 900px) {

@@ -1494,24 +1494,66 @@ const CORES_GRAFICO = [
   "#ff5c8a", // pink
 ];
 
-function limparCanvas(ctx, canvas) {
-  const dpr = window.devicePixelRatio || 1;
-  const alturaBase = parseInt(
-    canvas.dataset.alturaBase || canvas.getAttribute("height") || "220",
+// == GRAFICOS-RESPONSIVOS (inicio) ==
+// (o bloco entre estes marcadores é extraído por tools/_test_chart_responsivo.mjs)
+const ALTURA_GRAFICO_PADRAO = 350; // mesma altura de desktop definida no CSS
+
+// Altura efetiva do canvas: quem manda é o CSS (media queries por breakpoint).
+// clientHeight = 0 quando o canvas está escondido (aba não ativa), então nesse
+// caso use getComputedStyle, que resolve a altura das media queries mesmo com
+// display:none. 0 no retorno = não há altura confiável (fallback).
+function alturaCanvasCss(canvas) {
+  const visivel = Math.round(canvas.clientHeight || 0);
+  if (visivel > 0) return visivel;
+  try {
+    const alt = parseFloat(window.getComputedStyle(canvas).height);
+    if (isFinite(alt) && alt > 0) return Math.round(alt);
+  } catch (e) {
+    /* segue para o último recurso */
+  }
+  const attr = parseInt(
+    canvas.dataset.alturaBase || canvas.getAttribute("height") || "",
     10,
   );
-  canvas.dataset.alturaBase = alturaBase;
-  const larguraCss =
-    canvas.clientWidth || canvas.getBoundingClientRect().width || 300;
+  return isFinite(attr) && attr > 0 ? attr : 0;
+}
 
-  canvas.width = larguraCss * dpr;
-  canvas.height = alturaBase * dpr;
-  canvas.style.height = alturaBase + "px";
+// Corta o texto com "…" para a legenda não vazar da área disponível no celular
+function encurtarTexto(ctx, texto, larguraMax) {
+  if (!larguraMax || larguraMax <= 0) return texto;
+  if (ctx.measureText(texto).width <= larguraMax) return texto;
+  let t = texto;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > larguraMax)
+    t = t.slice(0, -1);
+  return `${t}…`;
+}
+
+// Equivalente, em canvas nativo, ao "responsive: true / maintainAspectRatio:
+// false" do Chart.js: largura = 100% do container (CSS) e altura também vinda
+// do CSS, com o buffer multiplicado pelo devicePixelRatio para o desenho sair
+// nítido no celular (dpr 2~3). O JS nunca fixa altura inline — se fixasse, o
+// valor inline venceria as media queries e o gráfico voltaria a ficar prensado.
+function limparCanvas(ctx, canvas) {
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  let alturaBase = alturaCanvasCss(canvas);
+  if (!alturaBase) {
+    // Último recurso: CSS sem altura definida nesse canvas
+    alturaBase = ALTURA_GRAFICO_PADRAO;
+    canvas.style.height = alturaBase + "px";
+  }
+  const larguraCss = Math.max(
+    1,
+    Math.round(canvas.clientWidth || canvas.getBoundingClientRect().width || 300),
+  );
+
+  canvas.width = Math.round(larguraCss * dpr);
+  canvas.height = Math.round(alturaBase * dpr);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, larguraCss, alturaBase);
   return { w: larguraCss, h: alturaBase };
 }
+// == GRAFICOS-RESPONSIVOS (fim) ==
 
 // util: draw rounded rect (filled)
 function roundedRect(ctx, x, y, width, height, radius) {
@@ -1789,13 +1831,26 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
     const minVal = Math.min(0, ...all);
     const maxVal = Math.max(1, ...all);
 
-    // layout
-    const padLeft = 56,
-      padRight = 20,
-      padTop = 24,
-      padBottom = 56;
+    // layout (compacto = celular: margens menores para não espremer a área útil)
+    const compacto = w < 460;
+    const padLeft = compacto ? 46 : 56,
+      padRight = compacto ? 10 : 20,
+      padTop = compacto ? 20 : 24,
+      padBottom = compacto ? 46 : 56;
     const areaW = w - padLeft - padRight;
     const areaH = h - padTop - padBottom;
+
+    // No celular o valor completo (R$ 10.541,03) não cabe à esquerda do eixo e
+    // sairia cortado; usa-se o formato curto (10,5k) apenas no rótulo do eixo.
+    const rotuloEixoY = (valor) => {
+      if (!compacto) return brMoeda(valor);
+      const abs = Math.abs(valor);
+      if (abs >= 1000)
+        return `${(valor / 1000)
+          .toFixed(abs >= 10000 ? 0 : 1)
+          .replace(".", ",")}k`;
+      return `${Math.round(valor)}`;
+    };
 
     // background subtle gradient
     const bg = ctx.createLinearGradient(0, 0, 0, h);
@@ -1824,7 +1879,7 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
       ctx.lineTo(padLeft + areaW, y);
       ctx.stroke();
       ctx.fillStyle = "rgba(255,255,255,0.72)";
-      ctx.fillText(brMoeda(v), padLeft - 8, y + 4);
+      ctx.fillText(rotuloEixoY(v), padLeft - 8, y + 4);
     }
 
     // smooth area path builder
@@ -1891,11 +1946,14 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
     ctx.stroke(saldoPath);
     ctx.shadowBlur = 0;
 
-    // x labels
-    ctx.font = "11px Segoe UI";
+    // x labels (no celular o espaço por mês é pequeno: mostra mês sim, mês não
+    // e usa fonte menor — senão os rótulos ficam colados/ilegíveis)
+    const passoRotulo = areaW / Math.max(1, labels.length) < 34 ? 2 : 1;
+    ctx.font = compacto ? "10px Segoe UI" : "11px Segoe UI";
     ctx.fillStyle = "rgba(255,255,255,0.86)";
     ctx.textAlign = "center";
     labels.forEach((lab, i) => {
+      if (passoRotulo > 1 && i % passoRotulo !== 0) return;
       ctx.fillText(lab.slice(0, 3), mapX(i), padTop + areaH + 18);
     });
 
@@ -2041,9 +2099,22 @@ function drawDonutChart(canvasId, labels, valores) {
   const corLegenda = "#f2c95a";
 
   const total = valores.reduce((a, b) => a + b, 0);
-  const cx = w * 0.32,
-    cy = h / 2,
-    raio = Math.min(cx, cy) - 10,
+
+  // No celular (canvas estreito) o donut fica em cima, centralizado, e a
+  // legenda embaixo em 2 colunas. Antes a legenda começava em 62% da largura
+  // e saía cortada na borda direita da tela.
+  const compacto = w < 520;
+  const COLUNAS_LEGENDA = 2;
+  const LINHA_LEGENDA = compacto ? 18 : 22;
+  const visiveis = labels.filter((_, i) => valores[i] > 0);
+  const alturaLegenda = compacto
+    ? Math.ceil(visiveis.length / COLUNAS_LEGENDA) * LINHA_LEGENDA + 6
+    : 0;
+  const alturaAreaDonut = compacto ? Math.max(110, h - alturaLegenda) : h;
+
+  const cx = compacto ? w / 2 : w * 0.32,
+    cy = alturaAreaDonut / 2,
+    raio = Math.max(24, Math.min(compacto ? w / 2 : cx, cy) - 10),
     raioInterno = raio * 0.55;
 
   if (total <= 0) {
@@ -2095,22 +2166,51 @@ function drawDonutChart(canvasId, labels, valores) {
   ctx.font = "bold 13px Segoe UI";
   ctx.fillText(brMoeda(total), cx, cy + 5);
 
-  // legend with circles
+  // legenda com bolinhas coloridas
   let ly = 12;
-  ctx.font = "12px Segoe UI";
+  let indiceItem = 0;
+  const larguraColuna = compacto ? (w - 8) / COLUNAS_LEGENDA : 0;
+  const baseTextoCompacto = alturaAreaDonut + LINHA_LEGENDA - 4;
+  ctx.font = compacto ? "11px Segoe UI" : "12px Segoe UI";
+
   labels.forEach((label, i) => {
     if (valores[i] <= 0) return;
     const cor = CORES_GRAFICO[i % CORES_GRAFICO.length];
-    // circle
+    const pct = ((valores[i] / total) * 100).toFixed(0);
+    const texto = `${label} — ${pct}%`;
+
+    if (compacto) {
+      // layout mobile: 2 colunas abaixo do donut com texto encurtado
+      const item = indiceItem++;
+      const col = item % COLUNAS_LEGENDA;
+      const lin = Math.floor(item / COLUNAS_LEGENDA);
+      const x = 4 + col * larguraColuna;
+      const y = baseTextoCompacto + lin * LINHA_LEGENDA;
+
+      ctx.beginPath();
+      ctx.arc(x + 6, y - 4, 5, 0, Math.PI * 2);
+      ctx.fillStyle = cor;
+      ctx.fill();
+
+      ctx.fillStyle = corLegenda;
+      ctx.textAlign = "left";
+      ctx.fillText(
+        encurtarTexto(ctx, texto, Math.max(20, larguraColuna - 22)),
+        x + 16,
+        y,
+      );
+      return;
+    }
+
+    // layout desktop: coluna à direita do donut (original)
     ctx.beginPath();
     ctx.arc(w * 0.62 + 6, ly + 6, 6, 0, Math.PI * 2);
     ctx.fillStyle = cor;
     ctx.fill();
-    // text
+
     ctx.fillStyle = corLegenda;
     ctx.textAlign = "left";
-    const pct = ((valores[i] / total) * 100).toFixed(0);
-    ctx.fillText(`${label} — ${pct}%`, w * 0.62 + 18, ly + 9);
+    ctx.fillText(texto, w * 0.62 + 18, ly + 9);
     ly += 22;
   });
 }
@@ -2356,6 +2456,23 @@ function renderResumo() {
 
 document.getElementById("resumoAno").addEventListener("change", renderResumo);
 document.getElementById("resumoMes").addEventListener("change", renderResumo);
+
+// Redesenha os gráficos do Resumo quando o tamanho da tela muda (girar o
+// celular, redimensionar a janela). É o equivalente do chart.resize() do
+// Chart.js: como o canvas é desenhado à mão com 2D context, o buffer precisa
+// ser recalculado para a nova largura e redesenhado.
+let timerRedesenhoGraficos = null;
+function redesenharGraficosResponsivos() {
+  if (timerRedesenhoGraficos) clearTimeout(timerRedesenhoGraficos);
+  timerRedesenhoGraficos = setTimeout(() => {
+    timerRedesenhoGraficos = null;
+    const root = document.getElementById("appRoot");
+    if (!root || root.style.display === "none") return;
+    renderResumo();
+  }, 150);
+}
+window.addEventListener("resize", redesenharGraficosResponsivos);
+window.addEventListener("orientationchange", redesenharGraficosResponsivos);
 
 // ---------------------------------------------------------------------
 // Backup / Reset
