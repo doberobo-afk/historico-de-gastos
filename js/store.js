@@ -220,7 +220,17 @@
       .then(function (resp) {
         if (resp.error) throw resp.error;
         if (!resp.data) {
-          // Primeiro acesso desta conta: publica a semente de exemplos
+          // Nenhuma linha com este user_id: normalmente é conta nova, mas se
+          // você tem certeza que já existem dados, o RLS está barrando por
+          // causa de um user_id diferente do da sessão atual (ver console).
+          console.warn(
+            "[HGStore] nenhuma linha em hg_dados para user_id=" +
+              estado.userId +
+              " (usuario=" +
+              estado.usuario +
+              "). Se já existem dados na tabela, confira se o user_id da " +
+              "linha bate com este id (auth.users.id da sessão atual).",
+          );
           var sementeDados = semente();
           espelho = sementeDados;
           return c
