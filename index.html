@@ -36,6 +36,28 @@
   </form>
 </div>
 
+<!-- Tela de nova senha: usada (1) pelo link de recuperação enviado por e-mail
+     e (2) pelo botão "Alterar senha" dentro do app (mesma tela, sobreposta). -->
+<div id="recoveryScreen" class="login-screen" style="display:none;">
+  <form id="formRecuperacao" class="login-card">
+    <h1>🔑 Definir nova senha</h1>
+    <p class="hint" id="recHint">
+      Escolha uma nova senha para a sua conta (mínimo de 6 caracteres).
+    </p>
+    <label>Nova senha
+      <input type="password" id="recSenha" required autocomplete="new-password" minlength="6" />
+    </label>
+    <label>Confirmar nova senha
+      <input type="password" id="recSenha2" required autocomplete="new-password" minlength="6" />
+    </label>
+    <div id="recMensagem" class="login-mensagem" role="alert"></div>
+    <div class="login-acoes">
+      <button type="submit" class="btn" id="btnSalvarSenha">Salvar nova senha</button>
+      <button type="button" class="btn secondary" id="btnFecharRecuperacao">Cancelar</button>
+    </div>
+  </form>
+</div>
+
 <div id="appRoot" style="display:none;">
 <header class="app-header">
   <div class="header-left">
@@ -50,9 +72,13 @@
     <button class="icon-btn" id="themeToggle" title="Alternar tema claro/escuro">🌗</button>
     <button class="btn secondary" id="btnExportar">⬇️ Exportar backup</button>
     <button class="btn danger" id="btnResetar">♻️ Restaurar dados de exemplo</button>
+    <button class="btn secondary" id="btnAlterarSenha">🔑 Alterar senha</button>
     <button class="btn secondary" id="btnSair">🚪 Sair</button>
   </div>
 </header>
+
+<!-- Aviso de falha ao carregar os dados da nuvem (mostrado por iniciar()) -->
+<div id="avisoDados" class="aviso-dados" style="display:none;" role="alert"></div>
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="resumo">📊 Resumo</button>

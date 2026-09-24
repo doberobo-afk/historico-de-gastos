@@ -117,6 +117,17 @@ a { color: var(--azul); }
 .sync-status.online { background: rgba(255, 255, 255, 0.24); }
 .sync-status.sincronizando { animation: pulsar 1.2s ease-in-out infinite; }
 .sync-status.offline { background: rgba(0, 0, 0, 0.24); }
+/* Falha de sincronização: fica visível e clicável (tenta de novo) */
+.sync-status.erro { background: rgba(217, 48, 37, 0.85); color: #fff; }
+.sync-status[data-acao="retry"] { cursor: pointer; }
+
+/* Faixa de aviso quando os dados da nuvem não carregaram (edição bloqueada) */
+.aviso-dados {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 12px 20px 0; padding: 10px 14px; font-size: 0.88rem;
+  color: var(--texto); background: rgba(217, 48, 37, 0.14);
+  border: 1px solid var(--vermelho); border-radius: var(--raio-sm);
+}
 
 /* ------------------------------ Login (auth) ------------------------------ */
 .login-screen {
@@ -143,6 +154,11 @@ a { color: var(--azul); }
 .login-mensagem { font-size: 0.85rem; min-height: 1.1em; }
 .login-mensagem.erro { color: var(--vermelho); }
 .login-mensagem.sucesso { color: var(--verde); }
+/* Mesma tela de senha, mas sobreposta ao app (botão "Alterar senha") */
+.login-screen.overlay {
+  position: fixed; inset: 0; z-index: 60; overflow: auto;
+  background: rgba(0, 0, 0, 0.65);
+}
 
 /* --------------------------------- Abas ---------------------------------- */
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px; background: var(--abas-bg); }

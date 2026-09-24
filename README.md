@@ -30,13 +30,31 @@ index.html
 
 **O que ela faz:**
 
-- Carrega automaticamente os dados iniciais da planilha (`js/dados_iniciais.js`) na primeira execução
-- Salva todas as alterações no `localStorage` do navegador (não precisa de servidor/backend)
+- **Login por e-mail e senha** (Supabase Auth): cada pessoa vê apenas os próprios dados
+- Dados salvos na nuvem, um documento por usuário na tabela `hg_dados` (Supabase), com RLS por `user_id` — sem `localStorage`, sem backend próprio
 - **Resumo**: cards de Receitas, Gastos Variáveis, Gastos Fixos/Cartões e Saldo, por Ano/Mês; tabela de planejamento (orçado x realizado) e visão anual dos 12 meses
-- **Controle Financeiro**: cadastro, listagem, filtros (ano/mês/tipo/texto) e exclusão de lançamentos
+- **Controle Financeiro**: cadastro, listagem, filtros (ano/mês/tipo/texto), exclusão de lançamentos e **importação de fatura em PDF** (100% no navegador, com vencimento/competência detectados e TIPO classificado por palavra-chave)
 - **Controle de Dívidas**: cadastro de contas fixas/cartões parcelados, alternância rápida entre "PAGO" e "À PAGAR" e **parcelamento automático** (a compra é faturada no mês seguinte e as demais parcelas são geradas para os meses seguintes)
 - **Cadastros**: gerenciamento das listas de categorias (Gastos Variáveis, Fixos e Parcelados, Receitas, Cartões) usadas nos menus suspensos das outras abas
-- Botões para **exportar backup em JSON** e **restaurar os dados originais** da planilha a qualquer momento
+- Botões para **exportar backup em JSON**, **restaurar os dados de exemplo** e **alterar a senha** a qualquer momento
+
+### Contas, login e segurança dos dados
+
+- **Login/cadastro** por e-mail e senha (`js/auth-config.js`). Com a confirmação de e-mail
+  ativa no Supabase, o cadastro só é liberado depois que a pessoa clica no link recebido.
+- **Esqueci minha senha**: o Supabase manda o link; ao voltar para o app, a tela
+  "Definir nova senha" aparece e conclui a troca (`auth.updateUser`).
+  ⚠️ No painel do Supabase, confira em **Auth → URL Configuration** se *Site URL* /
+  *Redirect URLs* apontam para o domínio de produção — senão o link cai em `localhost`.
+- **Isolamento entre contas**: cada linha de `hg_dados` pertence a um `user_id` e as
+  políticas de RLS só permitem ler/gravar a própria linha (`docs/supabase.sql`).
+- **Sem vazamento no mesmo navegador**: ao sair (ou entrar com outra conta) o estado em
+  memória e as telas são limpos antes de exibir os dados, e nada é gravado antes de o
+  carregamento da nuvem terminar (`js/store.js` → guard `carregado`).
+- **Sem perda silenciosa**: se o envio falhar, o indicador do topo mostra
+  "⚠️ Não sincronizado" (clique para tentar de novo), há reenvio automático com backoff,
+  envio imediato ao fechar/minimizar a aba e aviso antes de sair com alteração pendente.
+- **Backup**: o botão "Exportar backup" gera um JSON com todos os dados do usuário logado.
 
 ### Parcelamento automático (Controle de Dívidas)
 

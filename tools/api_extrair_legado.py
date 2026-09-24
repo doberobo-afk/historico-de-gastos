@@ -1,4 +1,14 @@
-"""Vercel Function (Python) - /api/extrair
+"""Vercel Function (Python) - /api/extrair  [ARQUIVADO - não é mais publicado]
+
+ATENÇÃO: este arquivo NÃO é mais implantado. Ele vivia em `api/extrair.py` e o
+Vercel o publicava como função Python na rota /api/extrair, mas nenhuma parte do
+front-end o chamava (a importação de fatura roda 100% no navegador com pdf.js,
+ver js/app.js -> importarPDF). Foi movido para cá e o bloco "functions" do
+vercel.json foi removido, para não manter um endpoint público sem uso no ar.
+
+Para reativar: devolver o arquivo para `api/extrair.py`, restaurar o bloco
+"functions": { "api/extrair.py": { "includeFiles": "extrator_fatura.py" } } no
+vercel.json e remover `*.py` do .vercelignore.
 
 Extrai os lançamentos de uma fatura de cartão (PDF ou CSV) e devolve JSON.
 Substitui o script local `extrair_fatura_pdf.py` em produção.

@@ -26,6 +26,59 @@
     return client;
   }
 
+  // ---------------------------------------------------------------------
+  // Link de redefinição de senha
+  // ---------------------------------------------------------------------
+  // O supabase-js consome e limpa a URL ao criar o cliente, então a detecção
+  // precisa acontecer aqui, no carregamento do script (quando a URL ainda tem
+  // o hash com type=recovery enviado pelo e-mail do Supabase).
+  var recuperacaoPendente = (function () {
+    try {
+      var hash = global.location ? String(global.location.hash || "") : "";
+      var busca = global.location ? String(global.location.search || "") : "";
+      return (
+        /type=recovery/i.test(hash) ||
+        /type=recovery/i.test(busca) ||
+        /error_description=/i.test(hash)
+      );
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  function emRecuperacao() {
+    return recuperacaoPendente;
+  }
+
+  function consumirRecuperacao() {
+    recuperacaoPendente = false;
+  }
+
+  // Tira o token da barra de endereços (evita deixá-lo visível/histórico).
+  function limparUrlAuth() {
+    try {
+      if (global.history && global.history.replaceState) {
+        var limpa = global.location.pathname + global.location.search;
+        limpa = limpa.replace(/[?&](code|error|error_description|type)=[^&]*/g, "");
+        limpa = limpa.replace(/[?&]$/, "");
+        global.history.replaceState(null, "", limpa || "/");
+      }
+    } catch (e) {
+      /* ignora */
+    }
+  }
+
+  // Troca a senha do usuário logado (usada tanto na recuperação por e-mail
+  // quanto no botão "Alterar senha" dentro do app).
+  async function atualizarSenha(novaSenha) {
+    var c = cliente();
+    if (!c) throw new Error("autenticação indisponível");
+    var resp = await c.auth.updateUser({ password: novaSenha });
+    if (resp.error)
+      throw new Error(resp.error.message || "falha ao alterar a senha");
+    return true;
+  }
+
   function sessaoParaUsuario(sessao) {
     if (!sessao || !sessao.access_token || !sessao.user) return null;
     return {
@@ -84,8 +137,9 @@
   function aoMudarSessao(cb) {
     var c = cliente();
     if (!c || typeof cb !== "function") return function () {};
-    var assinatura = c.auth.onAuthStateChange(function (_evento, sessao) {
-      cb(sessaoParaUsuario(sessao));
+    var assinatura = c.auth.onAuthStateChange(function (evento, sessao) {
+      if (evento === "PASSWORD_RECOVERY") recuperacaoPendente = true;
+      cb(sessaoParaUsuario(sessao), evento);
     });
     return function () {
       try {
@@ -101,8 +155,12 @@
     entrar: entrar,
     criarConta: criarConta,
     esqueciSenha: esqueciSenha,
+    atualizarSenha: atualizarSenha,
     sair: sair,
     aoMudarSessao: aoMudarSessao,
+    emRecuperacao: emRecuperacao,
+    consumirRecuperacao: consumirRecuperacao,
+    limparUrlAuth: limparUrlAuth,
     // Exposto para o HGStore falar direto com o Supabase (sem /api/sync).
     client: cliente,
   };

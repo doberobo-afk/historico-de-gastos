@@ -9,6 +9,15 @@
 // IMPORTANTE: hg_dados precisa de UNIQUE (user_id) para o upsert funcionar
 //             (onConflict é sempre por user_id, o dono usado pelo RLS):
 //   ALTER TABLE public.hg_dados ADD CONSTRAINT hg_dados_user_id_unique UNIQUE (user_id);
+//             (ou, melhor, user_id como PRIMARY KEY: ver
+//              docs/migracao_pk_user_id.sql)
+//
+// SEGURANÇA DE DADOS (não regredir!):
+//   push() só grava depois de um load() bem-sucedido (estado.carregado).
+//   Sem esse guard, uma falha de rede no boot deixava o espelho vazio e o
+//   upsert sobrescrevia o documento do usuário na nuvem com cf/cd/cad vazios.
+//   As gravações pendentes também são enviadas em pagehide/visibilitychange
+//   (flush) e reenviadas com backoff se a rede cair.
 // ==========================================================================
 (function (global) {
   "use strict";
@@ -25,18 +34,24 @@
   var TABELA = "hg_dados";
   var DEBOUNCE_MS = 900; // agrupa várias alterações em um único upsert
 
+  // Backoff do reenvio automático quando o upsert falha (rede/5xx/401).
+  var RETRY_MS = [2000, 5000, 15000, 45000, 120000];
+
   var estado = {
     modo: "deslogado", // "nuvem" | "deslogado"
     usuario: null,
     userId: null,
+    carregado: false, // só vira true após um load() bem-sucedido
     erro: null,
     ultimaSync: null,
     pendente: false,
+    tentativas: 0,
   };
 
   var espelho = { cf: [], cd: [], cad: {}, meta: {} }; // último estado conhecido
   var pendentes = {}; // campos alterados aguardando envio
   var timerPush = null;
+  var timerRetry = null;
   var ouvintes = [];
 
   // Traduz o erro 42P10 do Postgres (falta UNIQUE na coluna do onConflict)
@@ -154,6 +169,7 @@
     return {
       modo: estado.modo,
       usuario: estado.usuario,
+      carregado: estado.carregado,
       erro: estado.erro,
       pendente: estado.pendente,
       ultimaSync: estado.ultimaSync,
@@ -178,6 +194,13 @@
     estado.usuario = String(usuario || "").trim() || null;
     estado.userId = String(userId || "").trim() || null;
     estado.modo = estado.userId ? "nuvem" : "deslogado";
+    // Cada login (ou troca de conta) precisa carregar de novo antes de gravar:
+    // é o que impede um usuário de gravar por cima do documento do outro.
+    estado.carregado = false;
+    estado.erro = null;
+    estado.tentativas = 0;
+    espelho = vazio();
+    pendentes = {};
     return estado.usuario;
   }
 
@@ -186,13 +209,19 @@
     estado.usuario = null;
     estado.userId = null;
     estado.modo = "deslogado";
+    estado.carregado = false;
     estado.erro = null;
     estado.ultimaSync = null;
     estado.pendente = false;
+    estado.tentativas = 0;
     pendentes = {};
     if (timerPush) {
       global.clearTimeout(timerPush);
       timerPush = null;
+    }
+    if (timerRetry) {
+      global.clearTimeout(timerRetry);
+      timerRetry = null;
     }
     espelho = vazio();
     emitir();
@@ -202,12 +231,14 @@
   // Supabase e, no primeiro acesso (nenhuma linha ainda), publica a semente.
   function load() {
     if (estado.modo !== "nuvem" || !estado.userId) {
+      estado.carregado = false;
       espelho = vazio();
       emitir();
       return Promise.resolve(espelho);
     }
     var c = cliente();
     if (!c) {
+      estado.carregado = false;
       estado.erro = "Supabase indisponível";
       emitir();
       return Promise.resolve(vazio());
@@ -237,20 +268,42 @@
           );
           var sementeDados = semente();
           espelho = sementeDados;
+          // O carregamento em si deu certo (a conta simplesmente ainda não tem
+          // documento): libera a gravação, mas nada é enviado sem ação do
+          // usuário.
+          estado.carregado = true;
+          estado.tentativas = 0;
           estado.erro =
             "nenhum documento salvo ainda para esta conta (exemplos exibidos, nada foi gravado)";
           emitir();
           return sementeDados;
         }
         var dados = normalizar(resp.data.dados);
+        var primeiroCarregamento = !estado.carregado;
+        var tinhaPendentes = Object.keys(pendentes).length > 0;
         espelho = dados;
+        estado.carregado = true;
+        estado.tentativas = 0;
         estado.erro = null;
         estado.ultimaSync = new Date().toISOString();
+        if (primeiroCarregamento && tinhaPendentes) {
+          // Havia alterações pendentes feitas quando a base ainda era
+          // desconhecida (o load anterior falhou). Enviá-las substituiria o
+          // documento inteiro e apagaria o histórico real da nuvem, então elas
+          // são descartadas aqui e o usuário é avisado pelo status.
+          pendentes = {};
+          estado.pendente = false;
+          estado.erro =
+            "seus dados da nuvem foram recarregados; as alterações feitas antes disso foram descartadas para não sobrescrever o histórico";
+        }
         emitir();
         return dados;
       })
       .catch(function (e) {
         estado.erro = mensagemErro(e);
+        // Load falhou: BLOQUEIA a gravação (ver push()). Sem isso, o próximo
+        // push enviaria o documento vazio e apagaria os dados do usuário.
+        estado.carregado = false;
         espelho = vazio();
         emitir();
         return espelho;
@@ -275,9 +328,62 @@
     timerPush = global.setTimeout(push, DEBOUNCE_MS);
   }
 
+  // Reenvia automaticamente o que ficou pendente (rede instável: sai e volta)
+  function agendarRetry() {
+    if (timerRetry) return;
+    if (estado.modo !== "nuvem" || !estado.userId) return;
+    var i = Math.min(estado.tentativas, RETRY_MS.length - 1);
+    timerRetry = global.setTimeout(function () {
+      timerRetry = null;
+      if (estado.modo !== "nuvem" || !estado.userId) return;
+      if (!estado.carregado) {
+        // Sem carregamento confirmado ainda: tenta carregar e só depois grava
+        // (o que o usuário alterou continua guardado em pendentes).
+        load().then(function () {
+          if (estado.carregado && estado.pendente) push();
+        });
+        return;
+      }
+      if (estado.pendente) push();
+    }, RETRY_MS[i]);
+  }
+
+  // Envia AGORA o que estiver pendente. Usado em pagehide/visibilitychange
+  // (fechar/mínimizar a aba não espera o debounce), no logout e no botão de
+  // "tentar novamente" do indicador de sincronização.
+  function flush() {
+    if (timerPush) {
+      global.clearTimeout(timerPush);
+      timerPush = null;
+    }
+    if (estado.modo !== "nuvem" || !estado.userId)
+      return Promise.resolve(false);
+    if (!estado.pendente) return Promise.resolve(false);
+    return push();
+  }
+
+  // Pedido manual de sincronização (indicador de status clicável).
+  function retry() {
+    if (estado.modo !== "nuvem" || !estado.userId)
+      return Promise.resolve(false);
+    if (estado.carregado) return flush();
+    return load();
+  }
+
   function push() {
     if (estado.modo !== "nuvem" || !estado.userId)
       return Promise.resolve(false);
+    // GUARD DE SEGURANÇA: nunca gravar antes de um carregamento bem-sucedido.
+    // Se o load falhou, o espelho está vazio e o upsert apagaria o documento
+    // do usuário na nuvem. Aqui a gravação é bloqueada e o erro fica visível.
+    if (!estado.carregado) {
+      estado.pendente = true;
+      estado.erro =
+        "não foi possível carregar seus dados da nuvem — gravação bloqueada para não sobrescrever seu histórico";
+      agendarRetry();
+      emitir();
+      return Promise.resolve(false);
+    }
     var c = cliente();
     if (!c) return Promise.resolve(false);
     var dados = {
@@ -302,12 +408,16 @@
         pendentes = {};
         estado.pendente = false;
         estado.erro = null;
+        estado.tentativas = 0;
         estado.ultimaSync = new Date().toISOString();
         emitir();
         return true;
       })
       .catch(function (e) {
         estado.erro = mensagemErro(e);
+        estado.pendente = true;
+        estado.tentativas++;
+        agendarRetry(); // tenta de novo com backoff (e em "online")
         emitir();
         return false;
       });
@@ -338,17 +448,44 @@
       )
       .then(function (resp) {
         if (resp.error) throw resp.error;
+        estado.carregado = true; // substituição explícita e confirmada
         estado.pendente = false;
         estado.erro = null;
+        estado.tentativas = 0;
         estado.ultimaSync = new Date().toISOString();
         emitir();
         return sementeDados;
       })
       .catch(function (e) {
         estado.erro = mensagemErro(e);
+        estado.pendente = true;
+        estado.tentativas++;
+        agendarRetry();
         emitir();
         return sementeDados;
       });
+  }
+
+  // ---------------------------------------------------------------------
+  // Garantia de entrega: manda o que estiver pendente antes do navegador
+  // fechar/mínimizar a aba e assim que a conexão voltar.
+  // ---------------------------------------------------------------------
+  if (global.addEventListener) {
+    global.addEventListener("pagehide", function () {
+      flush();
+    });
+    global.addEventListener("beforeunload", function () {
+      flush();
+    });
+    global.addEventListener("online", function () {
+      estado.tentativas = 0;
+      flush();
+    });
+  }
+  if (global.document && global.document.addEventListener) {
+    global.document.addEventListener("visibilitychange", function () {
+      if (global.document.visibilityState === "hidden") flush();
+    });
   }
 
   function onChange(cb) {
@@ -373,6 +510,8 @@
     load: load,
     save: save,
     push: push,
+    flush: flush,
+    retry: retry,
     reset: reset,
     status: status,
     onChange: onChange,

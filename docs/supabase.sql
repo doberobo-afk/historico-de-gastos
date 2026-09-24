@@ -45,9 +45,10 @@ create index if not exists hg_cron_log_executado_em_idx
   on public.hg_cron_log (executado_em desc);
 
 -- ---------------------------------------------------------------------------
--- Segurança: RLS habilitado. A API (/api/sync) usa a service_role, que
--- ignora RLS por padrão — as políticas abaixo protegem qualquer acesso
--- direto que venha a usar a chave anon/autenticada do usuário (PostgREST).
+-- Segurança: RLS habilitado. O acesso vem do front-end (Supabase JS) usando a
+-- chave publicável (anon) + a sessão do usuário, portanto TODA a proteção das
+-- linhas depende das políticas abaixo: auth.uid() = user_id.
+-- Verificado em produção: GET /rest/v1/hg_dados sem token devolve [] (vazio).
 -- ---------------------------------------------------------------------------
 alter table public.hg_dados     enable row level security;
 alter table public.hg_cron_log  enable row level security;
@@ -80,9 +81,9 @@ create policy hg_dados_delete_own on public.hg_dados
 -- delete from public.hg_dados where user_id is null;
 
 -- ---------------------------------------------------------------------------
--- Exemplo de uso com a API (o usuário é identificado pelo token da sessão):
---   GET    /api/sync   Authorization: Bearer <access_token>
---   POST   /api/sync   {"dados": {"controle_financeiro": [], ...}}
---   DELETE /api/sync
+-- RECOMENDADO (antes de vender para terceiros): trocar a chave primária de
+-- `usuario` (e-mail) para `user_id`. O front-end não muda (o upsert já usa
+-- onConflict: "user_id"). Script pronto e comentado em:
+--     docs/migracao_pk_user_id.sql
 -- ---------------------------------------------------------------------------
 

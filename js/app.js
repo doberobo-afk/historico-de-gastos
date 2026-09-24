@@ -1407,6 +1407,18 @@ async function importarPDF(arquivo) {
   };
 }
 
+// Bloqueia importação enquanto os dados da nuvem não carregaram: sem base,
+// um lançamento novo sobrescreveria o documento do usuário no próximo envio.
+function dadosProntosParaEdicao(statusEl) {
+  if (STATE.pronto) return true;
+  if (statusEl) {
+    statusEl.style.color = "#d93025";
+    statusEl.textContent =
+      "⚠️ Seus dados ainda não foram carregados da nuvem. Use o botão \"Tentar novamente\" no topo e importe depois.";
+  }
+  return false;
+}
+
 document.getElementById("cfImportBtn").addEventListener("click", () => {
   const input = document.getElementById("cfImportFile");
   const status = document.getElementById("cfImportStatus");
@@ -1416,6 +1428,7 @@ document.getElementById("cfImportBtn").addEventListener("click", () => {
     status.style.color = "#d93025";
     return;
   }
+  if (!dadosProntosParaEdicao(status)) return;
 
   const ehPDF = /\.pdf$/i.test(arquivo.name);
   if (ehPDF) {
@@ -2421,21 +2434,72 @@ function renderStatusSync(s) {
   const el = document.getElementById("syncStatus");
   if (!el) return;
   const nuvem = s.modo === "nuvem";
-  el.classList.remove("online", "offline", "sincronizando");
+  const comErro = nuvem && !!s.erro;
+  el.classList.remove("online", "offline", "sincronizando", "erro");
   el.classList.add(
-    nuvem ? (s.pendente ? "sincronizando" : "online") : "offline",
+    !nuvem ? "offline" : comErro ? "erro" : s.pendente ? "sincronizando" : "online",
   );
-  el.textContent = nuvem
-    ? s.pendente
-      ? "☁️ Sincronizando…"
-      : "☁️ Sincronizado"
-    : "💾 Local (offline)";
-  el.title = nuvem
-    ? `Dados na nuvem (Supabase) · usuário ${s.usuario}`
-    : `Sem conexão com o Supabase (${s.erro || "offline"}): faça login novamente`;
+  el.textContent = !nuvem
+    ? "💾 Local (offline)"
+    : !s.carregado
+      ? "⚠️ Sem dados da nuvem"
+      : comErro
+        ? s.pendente
+          ? "⚠️ Não sincronizado"
+          : "⚠️ Atenção"
+        : s.pendente
+          ? "☁️ Sincronizando…"
+          : "☁️ Sincronizado";
+  if (!nuvem) {
+    el.title = `Sem conexão com o Supabase (${s.erro || "offline"}): faça login novamente`;
+  } else if (comErro) {
+    el.title = `${s.erro}${s.pendente ? " — clique para tentar novamente" : ""}`;
+  } else {
+    el.title = `Dados na nuvem (Supabase) · usuário ${s.usuario}`;
+  }
+  if (nuvem && (comErro || !s.carregado)) el.setAttribute("data-acao", "retry");
+  else el.removeAttribute("data-acao");
 }
 
 if (window.HGStore) HGStore.onChange(renderStatusSync);
+
+// Clique no indicador: reenvia o pendente ou recarrega da nuvem (quando o
+// carregamento inicial falhou, a gravação fica bloqueada até recarregar).
+const syncStatusEl = document.getElementById("syncStatus");
+if (syncStatusEl) {
+  syncStatusEl.addEventListener("click", async () => {
+    if (!window.HGStore || HGStore.status().modo !== "nuvem") return;
+    if (!HGStore.status().carregado) {
+      syncStatusEl.textContent = "☁️ Recarregando…";
+      await iniciar();
+      return;
+    }
+    await HGStore.retry();
+  });
+}
+
+// Avisa antes de fechar/perder a aba se houver alteração que ainda não subiu
+// (o envio em si é disparado pelo HGStore em pagehide/visibilitychange).
+window.addEventListener("beforeunload", (ev) => {
+  if (!window.HGStore) return;
+  const s = HGStore.status();
+  if (s.modo === "nuvem" && s.pendente) {
+    ev.preventDefault();
+    ev.returnValue =
+      "Há alterações que ainda não foram sincronizadas com a nuvem. Sair mesmo assim?";
+    return ev.returnValue;
+  }
+});
+
+// Voltou para o app depois de um boot sem carregar? Tenta carregar de novo.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (!window.HGStore) return;
+  const root = document.getElementById("appRoot");
+  if (root && root.style.display === "none") return; // está no login
+  const s = HGStore.status();
+  if (s.modo === "nuvem" && !s.carregado) iniciar();
+});
 
 // ---------------------------------------------------------------------
 // PWA: service worker (instalação no celular)
@@ -2506,17 +2570,22 @@ function abrirFormularioLancamento({
 // Inicialização
 // ---------------------------------------------------------------------
 async function iniciar() {
-  // Carrega da nuvem (/api/sync); sem backend, usa o cache local e,
-  // se não houver nada, publica os exemplos de demonstração.
+  // Carrega da nuvem (Supabase). Deu errado? A tela fica vazia e a edição é
+  // BLOQUEADA (STATE.pronto = false + guard no HGStore.push): é o que impede
+  // sobrescrever o histórico do usuário com um estado vazio.
+  let carregou = true;
   if (window.HGStore) {
     try {
       const dados = await HGStore.load();
       STATE = Object.assign({ pronto: true }, dados);
+      carregou = HGStore.status().carregado !== false;
     } catch (e) {
       console.error("Falha ao carregar os dados:", e);
+      carregou = false;
     }
   }
-  STATE.pronto = true;
+  STATE.pronto = carregou;
+  mostrarAvisoDados(carregou);
 
   // garante valores padrão persistidos para ano/mes do resumo
   if (!STATE.meta) STATE.meta = {};
@@ -2649,6 +2718,25 @@ function mostrarLogin() {
   if (login) login.style.display = "flex";
 }
 
+// Zera o estado em memória E o que está renderizado na tela. É chamado no
+// logout e imediatamente antes de exibir o app para outra conta: sem isso, o
+// próximo usuário do mesmo navegador veria os dados do anterior e, se o load
+// falhasse, poderia gravar por cima do documento dele. Com STATE.pronto=false
+// nenhum formulário aceita lançamento enquanto os dados não chegam.
+function limparTelaUsuario() {
+  STATE = { cf: [], cd: [], cad: {}, meta: {}, pronto: false };
+  PAGINA_CF = 1;
+  PAGINA_CD = 1;
+  try {
+    renderControleFinanceiro();
+    renderControleDividas();
+    renderCadastros();
+    renderResumo();
+  } catch (e) {
+    console.warn("Falha ao limpar as telas do usuário:", e);
+  }
+}
+
 function mensagemLogin(texto, tipo) {
   const el = document.getElementById("loginMensagem");
   if (!el) return;
@@ -2657,15 +2745,105 @@ function mensagemLogin(texto, tipo) {
   if (tipo) el.classList.add(tipo);
 }
 
+// Faixa de aviso quando os dados da nuvem não carregaram: explica por que a
+// edição está bloqueada e oferece a recarga. Sem innerHTML (só textContent).
+function mostrarAvisoDados(ok) {
+  const el = document.getElementById("avisoDados");
+  if (!el) return;
+  if (ok) {
+    el.style.display = "none";
+    el.textContent = "";
+    return;
+  }
+  el.textContent = "";
+  el.style.display = "flex";
+  const texto = document.createElement("span");
+  texto.textContent =
+    "⚠️ Não foi possível carregar seus dados da nuvem. Para não sobrescrever seu histórico, a importação e o cadastro ficam bloqueados até recarregar.";
+  const botao = document.createElement("button");
+  botao.type = "button";
+  botao.className = "btn";
+  botao.textContent = "Tentar novamente";
+  botao.addEventListener("click", () => iniciar());
+  el.appendChild(texto);
+  el.appendChild(botao);
+}
+
+// ---------------------------------------------------------------------
+// Tela de senha (link de recuperação por e-mail e botão "Alterar senha")
+// ---------------------------------------------------------------------
+let ignorarEventosAuth = false; // evita reagir ao signOut que nós mesmos fizemos
+
+function mensagemRecuperacao(texto, tipo) {
+  const el = document.getElementById("recMensagem");
+  if (!el) return;
+  el.textContent = texto || "";
+  el.classList.remove("erro", "sucesso");
+  if (tipo) el.classList.add(tipo);
+}
+
+function sobrepostaTelaSenha() {
+  const tela = document.getElementById("recoveryScreen");
+  return !!tela && tela.classList.contains("overlay");
+}
+
+// sobreposta = true -> troca de senha dentro do app (app continua atrás)
+// sobreposta = false -> link do e-mail (tela cheia, ainda sem entrar no app)
+function mostrarTelaSenha(sobreposta) {
+  const tela = document.getElementById("recoveryScreen");
+  const login = document.getElementById("loginScreen");
+  const root = document.getElementById("appRoot");
+  if (!tela) return;
+  tela.classList.toggle("overlay", !!sobreposta);
+  tela.style.display = "flex";
+  if (login) login.style.display = "none";
+  if (root && !sobreposta) root.style.display = "none";
+  mensagemRecuperacao("");
+  const s1 = document.getElementById("recSenha");
+  const s2 = document.getElementById("recSenha2");
+  if (s1) s1.value = "";
+  if (s2) s2.value = "";
+  const hint = document.getElementById("recHint");
+  if (hint) {
+    hint.textContent = sobreposta
+      ? "Troque a senha da sua conta (mínimo de 6 caracteres)."
+      : "Escolha uma nova senha para a sua conta (mínimo de 6 caracteres).";
+  }
+  const fechar = document.getElementById("btnFecharRecuperacao");
+  if (fechar) fechar.textContent = sobreposta ? "Cancelar" : "Voltar ao login";
+  if (s1) {
+    try {
+      s1.focus();
+    } catch (e) {}
+  }
+}
+
+function esconderTelaSenha() {
+  const tela = document.getElementById("recoveryScreen");
+  if (!tela) return;
+  tela.style.display = "none";
+  tela.classList.remove("overlay");
+}
+
 async function entrarComSessao(sessao) {
   if (!sessao || !window.HGStore) return false;
   HGStore.definirSessao(sessao.usuario, sessao.id);
+  limparTelaUsuario(); // nunca deixar dados de outra conta visíveis
   mostrarApp();
   await iniciar();
   return true;
 }
 
 async function encerrarSessao() {
+  ignorarEventosAuth = true;
+  // manda o que estiver pendente ANTES de derrubar a sessão (o token ainda vale)
+  if (window.HGStore) {
+    try {
+      await HGStore.flush();
+    } catch (e) {
+      /* o logout segue mesmo se o envio falhar */
+    }
+  }
   if (window.HGAuth) {
     try {
       await HGAuth.sair();
@@ -2674,8 +2852,11 @@ async function encerrarSessao() {
     }
   }
   if (window.HGStore) HGStore.limparSessao();
+  esconderTelaSenha();
+  limparTelaUsuario();
   mensagemLogin("");
   mostrarLogin();
+  ignorarEventosAuth = false;
 }
 
 const formLoginEl = document.getElementById("formLogin");
@@ -2762,8 +2943,114 @@ if (btnSairEl) {
   btnSairEl.addEventListener("click", encerrarSessao);
 }
 
+// Trocar a senha dentro do app (mesma tela da recuperação, sobreposta)
+const btnAlterarSenhaEl = document.getElementById("btnAlterarSenha");
+if (btnAlterarSenhaEl) {
+  btnAlterarSenhaEl.addEventListener("click", () => mostrarTelaSenha(true));
+}
+
+const formRecuperacaoEl = document.getElementById("formRecuperacao");
+if (formRecuperacaoEl) {
+  formRecuperacaoEl.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!window.HGAuth)
+      return mensagemRecuperacao("Autenticação indisponível.", "erro");
+    const senhaEl = document.getElementById("recSenha");
+    const senha2El = document.getElementById("recSenha2");
+    const senha = senhaEl ? senhaEl.value : "";
+    const senha2 = senha2El ? senha2El.value : "";
+    if (!senha || senha.length < 6)
+      return mensagemRecuperacao(
+        "A senha precisa ter ao menos 6 caracteres.",
+        "erro",
+      );
+    if (senha !== senha2)
+      return mensagemRecuperacao("As duas senhas não são iguais.", "erro");
+
+    const botao = document.getElementById("btnSalvarSenha");
+    if (botao) botao.disabled = true;
+    try {
+      await HGAuth.atualizarSenha(senha);
+      ignorarEventosAuth = true;
+      HGAuth.consumirRecuperacao();
+      HGAuth.limparUrlAuth();
+      mensagemRecuperacao("Senha alterada com sucesso!", "sucesso");
+      const eraTroca = sobrepostaTelaSenha();
+      await new Promise((r) => setTimeout(r, 700));
+      esconderTelaSenha();
+      if (eraTroca) {
+        mostrarApp();
+      } else {
+        // veio do link de recuperação: a sessão já está autenticada
+        const sessao = await HGAuth.obterSessao();
+        if (sessao) await entrarComSessao(sessao);
+        else mostrarLogin();
+      }
+    } catch (e) {
+      mensagemRecuperacao(
+        e && e.message ? e.message : "Falha ao alterar a senha.",
+        "erro",
+      );
+    } finally {
+      ignorarEventosAuth = false;
+      if (botao) botao.disabled = false;
+    }
+  });
+}
+
+const btnFecharRecuperacaoEl = document.getElementById("btnFecharRecuperacao");
+if (btnFecharRecuperacaoEl) {
+  btnFecharRecuperacaoEl.addEventListener("click", async () => {
+    if (sobrepostaTelaSenha()) {
+      esconderTelaSenha(); // apenas fecha: o app continua aberto atrás
+      return;
+    }
+    // veio do link do e-mail e desistiu: derruba a sessão e volta ao login
+    ignorarEventosAuth = true;
+    try {
+      if (window.HGAuth) {
+        HGAuth.consumirRecuperacao();
+        await HGAuth.sair();
+      }
+    } catch (e) {
+      /* segue para limpar o estado local */
+    }
+    if (window.HGStore) HGStore.limparSessao();
+    ignorarEventosAuth = false;
+    esconderTelaSenha();
+    limparTelaUsuario();
+    mostrarLogin();
+  });
+}
+
+// Reage às mudanças de sessão do Supabase: link de recuperação de senha e
+// sessão expirada/revogada (volta ao login em vez de ficar com tudo falhando).
+if (window.HGAuth) {
+  HGAuth.aoMudarSessao(async (sessao, evento) => {
+    if (evento === "PASSWORD_RECOVERY") {
+      mostrarTelaSenha(sobrepostaTelaSenha());
+      return;
+    }
+    if (sessao || ignorarEventosAuth) return;
+    const root = document.getElementById("appRoot");
+    if (!root || root.style.display === "none") return; // já está no login
+    if (window.HGStore) HGStore.limparSessao();
+    limparTelaUsuario();
+    mensagemLogin(
+      "Sua sessão expirou. Entre novamente para continuar.",
+      "erro",
+    );
+    mostrarLogin();
+  });
+}
+
 (async function bootstrap() {
   try {
+    // Link de redefinição de senha: pede a nova senha antes de liberar o app.
+    if (window.HGAuth && HGAuth.emRecuperacao()) {
+      mostrarTelaSenha(false);
+      return;
+    }
     const sessao = window.HGAuth ? await HGAuth.obterSessao() : null;
     if (sessao) {
       await entrarComSessao(sessao);
