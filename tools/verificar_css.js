@@ -14,7 +14,11 @@ const path = require("path");
 
 const RAIZ = path.dirname(__dirname);
 const CSS = process.argv[2] || path.join(RAIZ, "css", "style.css");
-const FONTES = [path.join(RAIZ, "index.html"), path.join(RAIZ, "js", "app.js")];
+const FONTES = [
+  path.join(RAIZ, "index.html"),
+  path.join(RAIZ, "js", "app.js"),
+  path.join(RAIZ, "js", "visaoAnual.js"),
+];
 
 // Classes aplicadas dinamicamente pelo JS (não aparecem literalmente no markup)
 const DINAMICAS = [
@@ -31,6 +35,18 @@ const DINAMICAS = [
   "offline",
   "sincronizando",
   "ultima-parcela",
+  // classes de la tabla "Visão Anual" (#tabelaAnualExcel) aplicadas por js/visaoAnual.js
+  "va-ano",
+  "va-hdr",
+  "va-corner",
+  "va-receita",
+  "va-parcelados",
+  "va-fixos",
+  "va-etq",
+  "va-despesa",
+  "va-saldo-neg",
+  "va-saldo-pos",
+  "va-saldo-cero",
 ];
 
 function ler(caminho) {

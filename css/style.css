@@ -389,8 +389,57 @@ body:not(.dark-theme) .actions-col button:hover { background: rgba(0, 0, 0, 0.05
 
 .empty-msg { padding: 18px; font-style: italic; color: var(--texto-suave); }
 
-/* mês selecionado na visão anual (aplicado pelo JS) */
-.selected-month { color: var(--destaque-texto); background: var(--destaque-bg); font-weight: 700; }
+/* ------------------- Visão Anual (tabela estilo Excel) ------------------- */
+/* Tabela anual con scroll horizontal, etiquetas fijas a la izquierda, bordes
+   negros finos y cores por tipo (iguales al print de Excel).
+   O generada por js/visaoAnual.js (#tabelaAnualExcel). */
+.visao-anual-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+}
+#tabelaAnualExcel {
+  width: 100%;
+  min-width: 1200px;
+  border-collapse: collapse;
+  color: #000;
+  font-size: 13px;
+}
+#tabelaAnualExcel th,
+#tabelaAnualExcel td {
+  border: 1px solid #000;      /* bordas negras finas, como Excel */
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+#tabelaAnualExcel td { text-align: right; }
+/* primeira columna (etiquetas + esquina) fijada a la izquierda */
+#tabelaAnualExcel tr > :first-child:not(.va-ano) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 150px;
+  text-align: left;
+}
+/* cabecera */
+#tabelaAnualExcel .va-ano {
+  background: #3f3f46; color: #fff;
+  text-align: center; font-weight: 700; font-size: 15px;
+}
+#tabelaAnualExcel .va-hdr {
+  background: #52525b; color: #fff; font-weight: 600; text-align: center;
+}
+#tabelaAnualExcel .va-corner { min-width: 150px; }
+/* filas: mesmo fondo em toda a fila (incluida a etiqueta fixa) */
+#tabelaAnualExcel .va-receita { background: #7dd3fc; }
+#tabelaAnualExcel .va-parcelados { background: #fca5a5; }
+#tabelaAnualExcel .va-fixos { background: #fed7aa; }
+#tabelaAnualExcel .va-despesa { background: #fb923c; font-weight: 700; }
+/* etiquetas de filas con fondo por valor (variáveis/saldo) */
+#tabelaAnualExcel .va-etq { background: #e7e5e4; }
+/* saldo por signo: próximo de cero amarelo / negativo vermelho / positivo verde */
+#tabelaAnualExcel .va-saldo-neg { background: #f87171; color: #000; font-weight: 700; }
+#tabelaAnualExcel .va-saldo-pos { background: #4ade80; font-weight: 700; }
+#tabelaAnualExcel .va-saldo-cero { background: #fde68a; font-weight: 700; }
 
 /* última parcela do Controle de Dívidas (aplicado pelo JS) */
 tbody tr.ultima-parcela {

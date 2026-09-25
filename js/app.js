@@ -2404,9 +2404,8 @@ function renderResumo() {
     });
   });
 
-  // Visão Anual (horizontal: meses como colunas)
-  const tabelaAnual = document.getElementById("tabelaAnual");
-  tabelaAnual.innerHTML = "";
+  // A tabela "Visão Anual" (estilo Excel) é generada por js/visaoAnual.js
+  // (window.recalcularAnual). Aqui só preparamos os dados do gráfico:
   const receitasPorMes = [];
   const despesasPorMes = [];
 
@@ -2430,31 +2429,6 @@ function renderResumo() {
     receitasPorMes.push(receitaMes);
     despesasPorMes.push(despesaMes);
   });
-
-  // cabeçalho com meses
-  let header = "<tr><th></th>";
-  MESES.forEach((m) => {
-    const destaque = m === mes ? 'class="selected-month"' : "";
-    header += `<th ${destaque}>${m}</th>`;
-  });
-  header += "</tr>";
-  tabelaAnual.innerHTML += header;
-
-  // linhas: Receita, Despesas, Saldo
-  const buildRow = (label, valores) => {
-    let row = `<tr><td><strong>${label}</strong></td>`;
-    MESES.forEach((m, i) => {
-      const destaque = m === mes ? 'class="selected-month"' : "";
-      row += `<td ${destaque}>${brMoeda(valores[i])}</td>`;
-    });
-    row += "</tr>";
-    return row;
-  };
-
-  tabelaAnual.innerHTML += buildRow("Receita", receitasPorMes);
-  tabelaAnual.innerHTML += buildRow("Despesas", despesasPorMes);
-  const saldos = receitasPorMes.map((r, i) => r - despesasPorMes[i]);
-  tabelaAnual.innerHTML += buildRow("Saldo", saldos);
 
   drawCompositeBarLineChart(
     "chartAnual",

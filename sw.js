@@ -17,6 +17,7 @@ const SHELL = [
   "./css/style.css",
   "./js/store.js",
   "./js/dados_iniciais.js",
+  "./js/visaoAnual.js",
   "./js/app.js",
   "./icons/icon-192.png",
 ];
