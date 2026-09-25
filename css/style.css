@@ -390,58 +390,65 @@ body:not(.dark-theme) .actions-col button:hover { background: rgba(0, 0, 0, 0.05
 .empty-msg { padding: 18px; font-style: italic; color: var(--texto-suave); }
 
 /* ------------------- Visão Anual (tabela estilo Excel) ------------------- */
-/* Tabela anual con scroll horizontal, etiquetas fijas a la izquierda, bordes
-   negros finos y cores por tipo (iguales al print de Excel).
-   O generada por js/visaoAnual.js (#tabelaAnualExcel). */
+/* Tabela HTML REAL (não é imagem): #tabelaAnual / #visaoAnualBody, preenchida
+   por renderVisaoAnual() em js/app.js com os dados de STATE.cf/STATE.cd.
+   Scroll horizontal, 1ª coluna (etiquetas/ANO) fixa à esquerda, bordas finas e
+   as cores exatas do print: o 1º tom listado é o da ETIQUETA fixa e o 2º é o
+   das CÉLULAS de valor. */
 .visao-anual-wrapper {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: 12px;
 }
-#tabelaAnualExcel {
+#tabelaAnual {
   width: 100%;
   min-width: 1200px;
   border-collapse: collapse;
   color: #000;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 700;
 }
-#tabelaAnualExcel th,
-#tabelaAnualExcel td {
-  border: 1px solid #000;      /* bordas negras finas, como Excel */
-  padding: 6px 10px;
+#tabelaAnual th,
+#tabelaAnual td {
+  border: 1px solid #444;      /* bordas finas, como no Excel */
+  padding: 6px 8px;
   white-space: nowrap;
+  text-align: center;
 }
-#tabelaAnualExcel td { text-align: right; }
-/* primeira columna (etiquetas + esquina + ANO) fijada a la izquierda */
-#tabelaAnualExcel tr > :first-child {
+/* primeira coluna (etiquetas + esquina + ANO) fixa à esquerda */
+#tabelaAnual tr > :first-child {
   position: sticky;
   left: 0;
   z-index: 3;
   min-width: 150px;
-  text-align: left;
 }
-#tabelaAnualExcel .va-rotulo-ano { text-align: center; }
-/* cabecera: 1ª linha "ANO | 2026" (cinza escuro) e meses em preto */
-#tabelaAnualExcel .va-rotulo-ano,
-#tabelaAnualExcel .va-ano {
-  background: #3f3f46; color: #fff;
-  font-weight: 700; text-align: center; font-size: 15px;
-}
-#tabelaAnualExcel .va-mes {
-  background: #000; color: #fff; font-weight: 700; text-align: center;
-}
-#tabelaAnualExcel .va-corner { min-width: 150px; }
-/* filas: mesmo fondo em toda a fila (incluida a etiqueta fixa) */
-#tabelaAnualExcel .va-receita { background: #7dd3fc; }
-#tabelaAnualExcel .va-parcelados { background: #fca5a5; }
-#tabelaAnualExcel .va-fixos { background: #fed7aa; }
-#tabelaAnualExcel .va-despesa { background: #fb923c; font-weight: 700; }
-/* etiquetas de filas con fondo por valor (variáveis/saldo) */
-#tabelaAnualExcel .va-etq { background: #e7e5e4; }
-/* saldo por signo: próximo de cero amarelo / negativo vermelho / positivo verde */
-#tabelaAnualExcel .va-saldo-neg { background: #f87171; color: #000; font-weight: 700; }
-#tabelaAnualExcel .va-saldo-pos { background: #4ade80; font-weight: 700; }
-#tabelaAnualExcel .va-saldo-cero { background: #fde68a; font-weight: 700; }
+/* cabeçalho: th #2a2a2a (texto branco) e 1ª coluna (ANO/esquina) #3a3a3a */
+#tabelaAnual th { background: #2a2a2a; color: #fff; font-weight: 700; }
+#tabelaAnual .va-rotulo-ano,
+#tabelaAnual .va-corner { background: #3a3a3a; }
+#tabelaAnual .va-ano { background: #3a3a3a; font-size: 15px; }
+#tabelaAnual .va-rotulo-ano { font-size: 15px; }
+#tabelaAnual .va-mes { background: #2a2a2a; }
+/* células de valor: dígitos com largura fixa (colunas alinhadas, como no Excel) */
+#tabelaAnual .va-cel { font-variant-numeric: tabular-nums; }
+
+/* Filas: cor das células (2º tom) e da etiqueta fixa (1º tom) */
+#tabelaAnual .va-receita { background: #87ceeb; }
+#tabelaAnual .va-etiqueta.va-receita { background: #7ec8e3; }
+#tabelaAnual .va-parcelados { background: #ffb3b3; }
+#tabelaAnual .va-etiqueta.va-parcelados { background: #f8a9a9; }
+#tabelaAnual .va-fixos { background: #ffdab9; }
+#tabelaAnual .va-etiqueta.va-fixos { background: #ffd8b1; }
+#tabelaAnual .va-despesa { background: #ff9a4d; font-weight: 800; }
+#tabelaAnual .va-etiqueta.va-despesa { background: #ff8c42; }
+/* etiquetas das filas com cor por valor (gastos variáveis e saldo) */
+#tabelaAnual .va-etq { background: #e7e5e4; }
+/* Gastos variáveis: o fundo é POR VALOR (style inline aplicado pelo JS):
+   > 5000 #ff9a9a · > 2000 #ffb3b3 · < 100 (e 0) #7be9a0 */
+/* Saldo por signo (regras DEPOIS de .va-etq para vencerem nas células) */
+#tabelaAnual .va-saldo-neg { background: #ff8a8a; color: #000; font-weight: 800; }
+#tabelaAnual .va-saldo-pos { background: #4ade80; font-weight: 800; }
+#tabelaAnual .va-saldo-cero { background: #fde68a; font-weight: 800; }
 
 /* última parcela do Controle de Dívidas (aplicado pelo JS) */
 tbody tr.ultima-parcela {

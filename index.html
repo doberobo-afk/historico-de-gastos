@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
-<link rel="stylesheet" href="css/style.css?v=20260926" />
+<link rel="stylesheet" href="css/style.css?v=20260927" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="dark-theme">
@@ -169,8 +169,33 @@
     </div>
 
     <h3 style="margin-top:24px;">Visão Anual</h3>
-    <div class="visao-anual-wrapper">
-      <table id="tabelaAnualExcel"></table>
+    <div class="visao-anual-wrapper" id="visaoAnual">
+      <!-- Tabela HTML real (não é imagem): os meses são rótulos fixos, o ano e
+           TODOS os valores vêm do sistema via renderVisaoAnual() (js/app.js). -->
+      <table id="tabelaAnual">
+        <thead>
+          <tr>
+            <th class="va-rotulo-ano">ANO</th>
+            <th class="va-ano" id="vaAno" colspan="12" style="text-align:center"></th>
+          </tr>
+          <tr>
+            <th class="va-corner" aria-label="Mês"></th>
+            <th class="va-mes">JANEIRO</th>
+            <th class="va-mes">FEVEREIRO</th>
+            <th class="va-mes">MARÇO</th>
+            <th class="va-mes">ABRIL</th>
+            <th class="va-mes">MAIO</th>
+            <th class="va-mes">JUNHO</th>
+            <th class="va-mes">JULHO</th>
+            <th class="va-mes">AGOSTO</th>
+            <th class="va-mes">SETEMBRO</th>
+            <th class="va-mes">OUTUBRO</th>
+            <th class="va-mes">NOVEMBRO</th>
+            <th class="va-mes">DEZEMBRO</th>
+          </tr>
+        </thead>
+        <tbody id="visaoAnualBody"></tbody>
+      </table>
     </div>
   </section>
 
@@ -442,11 +467,10 @@
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
   window.pdfjsLib = pdfjsLib;
 </script>
-<script src="js/auth-config.js?v=20260926"></script>
-<script src="js/store.js?v=20260926"></script>
-<script src="js/dados_iniciais.js?v=20260926"></script>
-<script src="js/visaoAnual.js?v=20260926"></script>
-<script src="js/app.js?v=20260926"></script>
+<script src="js/auth-config.js?v=20260927"></script>
+<script src="js/store.js?v=20260927"></script>
+<script src="js/dados_iniciais.js?v=20260927"></script>
+<script src="js/app.js?v=20260927"></script>
 </body>
 </html>
 

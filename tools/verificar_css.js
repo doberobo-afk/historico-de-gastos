@@ -17,7 +17,6 @@ const CSS = process.argv[2] || path.join(RAIZ, "css", "style.css");
 const FONTES = [
   path.join(RAIZ, "index.html"),
   path.join(RAIZ, "js", "app.js"),
-  path.join(RAIZ, "js", "visaoAnual.js"),
 ];
 
 // Classes aplicadas dinamicamente pelo JS (não aparecem literalmente no markup)
@@ -35,7 +34,8 @@ const DINAMICAS = [
   "offline",
   "sincronizando",
   "ultima-parcela",
-  // classes de la tabla "Visão Anual" (#tabelaAnualExcel) aplicadas por js/visaoAnual.js
+  // classes da tabela "Visão Anual" (#tabelaAnual) aplicadas por
+  // renderVisaoAnual() em js/app.js
   "va-rotulo-ano",
   "va-ano",
   "va-mes",

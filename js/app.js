@@ -2242,10 +2242,25 @@ function shadeColor(hex, percent) {
 // ---------------------------------------------------------------------
 // RESUMO
 // ---------------------------------------------------------------------
+// Compara a categoria com uma das listas de Cadastros ignorando espaços e
+// caixa: há itens cadastrados com espaço sobrando (" ENERGIA") e lançamentos
+// importados podem vir em minúsculas — sem isso a soma dava R$ 0,00 para eles.
+function normalizaTipo(valor) {
+  return String(valor === null || valor === undefined ? "" : valor)
+    .trim()
+    .toUpperCase();
+}
+
+function categoriaNaLista(tipos, tipo) {
+  if (!tipos) return true;
+  const alvo = normalizaTipo(tipo);
+  return tipos.some((t) => normalizaTipo(t) === alvo);
+}
+
 function somaCF({ tipos, ano, mes, entradaSaida }) {
   return STATE.cf
     .filter((r) => {
-      if (tipos && !tipos.includes(r.TIPO)) return false;
+      if (!categoriaNaLista(tipos, r.TIPO)) return false;
       if (ano && String(r.ANO || anoDaDataBr(r.DATA)) !== String(ano))
         return false;
       if (mes && String(r.VENCIMENTO || mesDaDataBr(r.DATA)) !== String(mes))
@@ -2256,10 +2271,18 @@ function somaCF({ tipos, ano, mes, entradaSaida }) {
     .reduce((acc, r) => acc + num(r.VALOR), 0);
 }
 
-function somaCD({ tipos, ano, mes }) {
+// `observacao` (opcional) é o que separa PARCELADOS de GASTOS FIXOS no
+// Controle de Dívidas — usado pela Visão Anual (renderVisaoAnual).
+function somaCD({ tipos, ano, mes, observacao }) {
   return STATE.cd
     .filter((r) => {
-      if (tipos && !tipos.includes(r.TIPO)) return false;
+      if (!categoriaNaLista(tipos, r.TIPO)) return false;
+      if (
+        observacao &&
+        String(r.OBSERVACAO || "").trim().toUpperCase() !==
+          String(observacao).trim().toUpperCase()
+      )
+        return false;
       if (ano && String(r.ANO || anoDaDataBr(r.DATA)) !== String(ano))
         return false;
       if (mes && String(r.VENCIMENTO || mesDaDataBr(r.DATA)) !== String(mes))
@@ -2440,6 +2463,10 @@ function renderResumo() {
   // A dica de rolagem depende da largura real do desenho (roda depois dos dois
   // gráficos do Resumo terem sido redesenhados).
   atualizarDicasScroll();
+
+  // Visão Anual: tabela HTML recalculada do zero a cada render (é o ponto por
+  // onde passam TODOS os cadastros/edições/exclusões de lançamentos e dívidas).
+  renderVisaoAnual();
 }
 
 // A dica "← arraste para ver mais →" (::after do .grafico-scroll-wrapper) só
@@ -2471,6 +2498,220 @@ function redesenharGraficosResponsivos() {
 }
 window.addEventListener("resize", redesenharGraficosResponsivos);
 window.addEventListener("orientationchange", redesenharGraficosResponsivos);
+
+// ---------------------------------------------------------------------
+// VISÃO ANUAL — tabela real (não é imagem), 100% automática
+// ---------------------------------------------------------------------
+// #tabelaAnual / #visaoAnualBody (index.html) são preenchidas aqui a partir do
+// estado do sistema (STATE.cf / STATE.cd), nunca com números fixos no HTML.
+//
+//   RECEITA          = receitas do mês  (somaCF, entradaSaida "RECEITA")
+//   PARCELADOS       = CD do mês com OBSERVAÇÃO "PARCELADOS"
+//   GASTOS FIXOS     = CD do mês com OBSERVAÇÃO "GASTOS FIXOS"
+//   GASTOS VARIÁVEIS = despesas do mês das categorias de gastos variáveis
+//   DESPESA TOTAL    = PARCELADOS + GASTOS FIXOS + GASTOS VARIÁVEIS
+//   SALDO            = RECEITA - DESPESA TOTAL
+//
+// Cores exatas do print (as das CÉLULAS ficam no css/style.css por classe):
+//   RECEITA #87ceeb (etiqueta #7ec8e3) · PARCELADOS #ffb3b3 (etiqueta #f8a9a9)
+//   GASTOS FIXOS #ffdab9 (etiqueta #ffd8b1) · DESPESA TOTAL #ff9a4d (etiqueta
+//   #ff8c42) · SALDO < 0 #ff8a8a (texto preto) e > 0 #4ade80.
+const VA_VARIAVEIS_VERDE = "#7be9a0"; // valor < 100 (e o 0)
+const VA_VARIAVEIS_VERMELHO = "#ffb3b3"; // valor > 2000
+const VA_VARIAVEIS_VERMELHO_FORTE = "#ff9a9a"; // valor > 5000
+const VA_VARIAVEIS_ATE_VERDE = 100;
+const VA_VARIAVEIS_ATE_MEDIO = 2000;
+const VA_VARIAVEIS_ATE_FORTE = 5000;
+
+// Fundo das células de GASTOS VARIÁVEIS pelo valor do mês.
+function corGastosVariaveis(valor) {
+  const v = num(valor);
+  if (v > VA_VARIAVEIS_ATE_FORTE) return VA_VARIAVEIS_VERMELHO_FORTE;
+  if (v > VA_VARIAVEIS_ATE_MEDIO) return VA_VARIAVEIS_VERMELHO;
+  if (v < VA_VARIAVEIS_ATE_VERDE) return VA_VARIAVEIS_VERDE;
+  // faixa intermediária (100 a 2000): degradê verde -> vermelho claro, como no
+  // print. Os tons exatos das pontas continuam sendo os do print.
+  const t =
+    (v - VA_VARIAVEIS_ATE_VERDE) /
+    (VA_VARIAVEIS_ATE_MEDIO - VA_VARIAVEIS_ATE_VERDE);
+  const de = [0x7b, 0xe9, 0xa0];
+  const para = [0xff, 0xb3, 0xb3];
+  const rgb = de.map((c, i) => Math.round(c + (para[i] - c) * t));
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+
+// Classe do fundo das células de SALDO: negativo vermelho, positivo verde e
+// zero no tom neutro (amarelo) do print.
+function classeSaldoAnual(valor) {
+  const v = num(valor);
+  if (v < 0) return "va-saldo-neg";
+  if (v > 0) return "va-saldo-pos";
+  return "va-saldo-cero";
+}
+
+// Ano mostrado na Visão Anual: o mesmo selecionado no Resumo.
+function anoVisaoAnual() {
+  const select = document.getElementById("resumoAno");
+  if (select && select.value) return String(select.value);
+  if (STATE.meta && STATE.meta.ano_atual) return String(STATE.meta.ano_atual);
+  return String(new Date().getFullYear());
+}
+
+// ---------------------------------------------------------------------
+// VISÃO ANUAL (continuação) — cálculo e desenho da tabela
+// ---------------------------------------------------------------------
+// Série de cada linha da tabela, mês a mês (índice 0 = JANEIRO).
+function coletarVisaoAnual(ano) {
+  const cad = STATE.cad || {};
+  const anoAlvo = String(ano || anoVisaoAnual());
+  const receitasCategorias =
+    Array.isArray(cad.receitas) && cad.receitas.length
+      ? cad.receitas
+      : CATEGORIAS_RECEITA_PADRAO;
+  const categoriasVariaveis = cad.gastos_variaveis || [];
+  const categoriasFixas = cad.fixos_parcelados || [];
+
+  const receita = [];
+  const parcelados = [];
+  const fixos = [];
+  const variaveis = [];
+
+  MESES.forEach((mes) => {
+    receita.push(
+      somaCF({
+        tipos: receitasCategorias,
+        ano: anoAlvo,
+        mes,
+        entradaSaida: "RECEITA",
+      }),
+    );
+    variaveis.push(
+      categoriasVariaveis.reduce(
+        (acc, cat) =>
+          acc +
+          somaCF({ tipos: [cat], ano: anoAlvo, mes, entradaSaida: "DESPESA" }),
+        0,
+      ),
+    );
+    // No Controle de Dívidas quem separa uma parcela de uma conta fixa é a
+    // OBSERVAÇÃO. As linhas "RECEBIDO"/"À RECEBER" são entradas, por isso
+    // ficam fora das despesas.
+    parcelados.push(
+      somaCD({
+        tipos: categoriasFixas,
+        ano: anoAlvo,
+        mes,
+        observacao: "PARCELADOS",
+      }),
+    );
+    fixos.push(
+      somaCD({
+        tipos: categoriasFixas,
+        ano: anoAlvo,
+        mes,
+        observacao: "GASTOS FIXOS",
+      }),
+    );
+  });
+
+  const despesaTotal = MESES.map(
+    (_, i) => parcelados[i] + fixos[i] + variaveis[i],
+  );
+  const saldo = MESES.map((_, i) => receita[i] - despesaTotal[i]);
+
+  return {
+    ano: anoAlvo,
+    receita,
+    parcelados,
+    fixos,
+    variaveis,
+    despesaTotal,
+    saldo,
+  };
+}
+
+// Desenha a tabela. Chamada por renderResumo() a cada cadastro/edição/exclusão.
+function renderVisaoAnual() {
+  const corpo = document.getElementById("visaoAnualBody");
+  const tabela = document.getElementById("tabelaAnual");
+  const wrapper = document.getElementById("visaoAnual");
+
+  // A Visão Anual é tabela de verdade: nenhum <img>/<canvas>/background-image
+  // pode sobrar dentro dela (limpa o que tiver vindo do HTML).
+  if (wrapper && typeof wrapper.querySelectorAll === "function") {
+    wrapper.querySelectorAll("img, canvas, svg").forEach((no) => {
+      if (no && typeof no.remove === "function") no.remove();
+    });
+  }
+  [wrapper, tabela, corpo].forEach((el) => {
+    if (el && el.style) el.style.backgroundImage = "none";
+  });
+
+  if (!corpo || !tabela) return false;
+
+  const dados = coletarVisaoAnual();
+
+  // A célula do ano ("ANO | 2026") também é dinâmica: nunca fica fixa no HTML.
+  const anoEl = document.getElementById("vaAno");
+  if (anoEl) {
+    anoEl.textContent = dados.ano;
+    anoEl.colSpan = MESES.length;
+  }
+
+  const linhasTabela = [
+    { rotulo: "RECEITA", classe: "va-receita", valores: dados.receita },
+    {
+      rotulo: "PARCELADOS",
+      classe: "va-parcelados",
+      valores: dados.parcelados,
+    },
+    { rotulo: "GASTOS FIXOS", classe: "va-fixos", valores: dados.fixos },
+    {
+      rotulo: "GASTOS VARIÁVEIS",
+      classe: "va-etq",
+      valores: dados.variaveis,
+      cor: corGastosVariaveis,
+    },
+    {
+      rotulo: "DESPESA TOTAL",
+      classe: "va-despesa",
+      valores: dados.despesaTotal,
+    },
+    {
+      rotulo: "SALDO",
+      classe: "va-etq",
+      valores: dados.saldo,
+      corClasse: classeSaldoAnual,
+    },
+  ];
+
+  corpo.innerHTML = linhasTabela
+    .map((linha) => {
+      const etiqueta = `<td class="va-etiqueta ${linha.classe}">${linha.rotulo}</td>`;
+      const celulas = linha.valores
+        .map((valor) => {
+          const extra = linha.corClasse ? " " + linha.corClasse(valor) : "";
+          const fundo = linha.cor ? linha.cor(valor) : "";
+          const estilo = fundo ? ` style="background:${fundo}"` : "";
+          return `<td class="va-cel ${linha.classe}${extra}"${estilo}>${brMoeda(valor)}</td>`;
+        })
+        .join("");
+      return `<tr>${etiqueta}${celulas}</tr>`;
+    })
+    .join("");
+
+  return true;
+}
+
+// Para testar/forçar no console: renderVisaoAnual() e visaoAnual.coletar(ano).
+window.renderVisaoAnual = renderVisaoAnual;
+window.visaoAnual = {
+  render: renderVisaoAnual,
+  coletar: coletarVisaoAnual,
+  corGastosVariaveis,
+  classeSaldo: classeSaldoAnual,
+  ano: anoVisaoAnual,
+};
 
 // ---------------------------------------------------------------------
 // Backup / Reset
