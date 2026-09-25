@@ -1498,6 +1498,20 @@ const CORES_GRAFICO = [
 // (o bloco entre estes marcadores é extraído por tools/_test_chart_responsivo.mjs)
 const ALTURA_GRAFICO_PADRAO = 360; // mesma altura do .grafico-canvas-container no CSS
 
+// Equivalente às "options" do Chart.js usadas neste projeto (canvas nativo):
+//   responsive: true, maintainAspectRatio: false  -> a largura vem do CSS
+//   (100% do container) e a altura também vem do CSS, sem o JS fixar altura.
+//   aspectRatio: 1.6 no celular -> altura de segurança = largura / 1.6,
+//   respeitando o teto de 320px (max-height do container no @media 768px).
+const OPCOES_GRAFICO = {
+  responsive: true,
+  maintainAspectRatio: false,
+  aspectRatio: 1.6,
+  mediaMobile: "(max-width: 768px)",
+  alturaMobileMax: 320, // = max-height: 320px do container no celular
+  alturaMobileMin: 180, // evita gráfico achatado se a largura for mínima
+};
+
 // Altura efetiva do canvas: quem manda é o CSS (media queries por breakpoint).
 // clientHeight = 0 quando o canvas está escondido (aba não ativa), então nesse
 // caso use getComputedStyle, que resolve a altura das media queries mesmo com
@@ -1528,6 +1542,43 @@ function encurtarTexto(ctx, texto, larguraMax) {
   return `${t}…`;
 }
 
+// Estamos no layout de celular? Mesmo breakpoint do CSS (max-width: 768px).
+// matchMedia é o caminho normal; innerWidth é o fallback (ex.: ambiente de
+// teste em Node, sem window.matchMedia).
+function ehLayoutMobile() {
+  try {
+    if (typeof window.matchMedia === "function")
+      return window.matchMedia(OPCOES_GRAFICO.mediaMobile).matches;
+  } catch (e) {
+    /* segue para o fallback */
+  }
+  return window.innerWidth > 0 && window.innerWidth <= 768;
+}
+
+// Altura do canvas quando o CSS não define nenhuma (último recurso): no celular
+// equivale ao aspectRatio 1.6 (largura / 1.6), limitado entre 180px e 320px;
+// no desktop mantém a altura padrão.
+function alturaCanvasFallback(largura) {
+  if (!ehLayoutMobile()) return ALTURA_GRAFICO_PADRAO;
+  const altura = Math.round(largura / OPCOES_GRAFICO.aspectRatio);
+  return Math.min(
+    OPCOES_GRAFICO.alturaMobileMax,
+    Math.max(OPCOES_GRAFICO.alturaMobileMin, altura),
+  );
+}
+
+// O usuário pediu para reduzir animações no sistema? A animação de entrada dos
+// gráficos é um enfeite opcional e deve ser pulada nesse caso.
+function prefereMenosMovimento() {
+  try {
+    if (typeof window.matchMedia === "function")
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (e) {
+    /* sem matchMedia: pode animar */
+  }
+  return false;
+}
+
 // Equivalente, em canvas nativo, ao "responsive: true / maintainAspectRatio:
 // false" do Chart.js: largura = 100% do container (CSS) e altura também vinda
 // do CSS, com o buffer multiplicado pelo devicePixelRatio para o desenho sair
@@ -1535,16 +1586,23 @@ function encurtarTexto(ctx, texto, larguraMax) {
 // valor inline venceria as media queries e o gráfico voltaria a ficar prensado.
 function limparCanvas(ctx, canvas) {
   const dpr = Math.max(1, window.devicePixelRatio || 1);
-  let alturaBase = alturaCanvasCss(canvas);
-  if (!alturaBase) {
-    // Último recurso: CSS sem altura definida nesse canvas
-    alturaBase = ALTURA_GRAFICO_PADRAO;
-    canvas.style.height = alturaBase + "px";
-  }
   const larguraCss = Math.max(
     1,
     Math.round(canvas.clientWidth || canvas.getBoundingClientRect().width || 300),
   );
+
+  let alturaBase = alturaCanvasCss(canvas);
+  if (!alturaBase) {
+    // Último recurso: CSS sem altura definida nesse canvas
+    alturaBase = alturaCanvasFallback(larguraCss);
+    canvas.style.height = alturaBase + "px";
+  }
+
+  // Teto de altura no celular (max-height: 320px do container). Fica também
+  // aqui, e não só no CSS, para o caso de o service worker servir um CSS
+  // antigo em cache — o desenho nunca passa de 320px no celular.
+  if (ehLayoutMobile())
+    alturaBase = Math.min(alturaBase, OPCOES_GRAFICO.alturaMobileMax);
 
   canvas.width = Math.round(larguraCss * dpr);
   canvas.height = Math.round(alturaBase * dpr);
@@ -1555,267 +1613,51 @@ function limparCanvas(ctx, canvas) {
 }
 // == GRAFICOS-RESPONSIVOS (fim) ==
 
-// util: draw rounded rect (filled)
-function roundedRect(ctx, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + width, y, x + width, y + height, r);
-  ctx.arcTo(x + width, y + height, x, y + height, r);
-  ctx.arcTo(x, y + height, x, y, r);
-  ctx.arcTo(x, y, x + width, y, r);
-  ctx.closePath();
-  ctx.fill();
+// Composite chart: Receitas/Despesas em áreas suaves + linha de Saldo
+// (visão anual do Resumo). Paleta fixa desta visão — a legenda é pintada com
+// exatamente as mesmas cores das linhas.
+const CORES_ANUAL = {
+  receita: "#3b82f6", // azul
+  despesa: "#f97316", // laranja
+  saldoPositivo: "#22c55e", // verde (saldo >= 0)
+  saldoNegativo: "#ef4444", // vermelho (saldo < 0)
+  // preenchimento em degradê: rgba(cor, 0.3) -> rgba(cor, 0)
+  receitaFillInicio: "rgba(59,130,246,0.3)",
+  receitaFillFim: "rgba(59,130,246,0)",
+  despesaFillInicio: "rgba(249,115,22,0.3)",
+  despesaFillFim: "rgba(249,115,22,0)",
+};
+
+// Fim do degradê de preenchimento: ctx.createLinearGradient(0, 0, 0, 300)
+const FIM_DEGRADE_ANUAL = 300;
+
+// "tension" 0.4 (Chart.js): pontos de controle a 40% / 60% de cada trecho.
+const TENSAO_ANUAL = 0.4;
+
+// Cor da linha de Saldo: verde com saldo >= 0 e vermelho quando fica negativo.
+function corSaldoAnual(valor) {
+  return (valor || 0) >= 0
+    ? CORES_ANUAL.saldoPositivo
+    : CORES_ANUAL.saldoNegativo;
 }
 
-function drawBarChartDuplo(
-  canvasId,
-  labels,
-  serieA,
-  serieB,
-  corA,
-  corB,
-  nomeA,
-  nomeB,
-) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const { w, h } = limparCanvas(ctx, canvas);
-
-  const padLeft = 50,
-    padBottom = 40,
-    padTop = 20,
-    padRight = 10;
-  const areaW = w - padLeft - padRight;
-  const areaH = h - padTop - padBottom;
-  const maxVal = Math.max(1, ...serieA, ...serieB);
-  const grupoW = areaW / labels.length;
-  const barW = grupoW * 0.35;
-
-  // background grid
-  ctx.strokeStyle = "rgba(255,255,255,0.06)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const gridSteps = 4;
-  for (let i = 0; i <= gridSteps; i++) {
-    const y = padTop + (areaH * i) / gridSteps;
-    ctx.moveTo(padLeft, y);
-    ctx.lineTo(padLeft + areaW, y);
-  }
-  ctx.stroke();
-
-  ctx.font = "12px Segoe UI";
-  ctx.fillStyle = "#071025"; // darker text for better contrast on light panels
-  ctx.textAlign = "center";
-
-  labels.forEach((label, i) => {
-    const xGrupo = padLeft + i * grupoW;
-    const alturaA = (serieA[i] / maxVal) * areaH;
-    const alturaB = (serieB[i] / maxVal) * areaH;
-
-    // bar A with vertical gradient and rounded corners
-    const xA = xGrupo + grupoW * 0.12;
-    const yA = padTop + areaH - alturaA;
-    const gradA = ctx.createLinearGradient(0, yA, 0, padTop + areaH);
-    gradA.addColorStop(0, shadeColor(corA, 18));
-    gradA.addColorStop(1, corA);
-    ctx.fillStyle = gradA;
-    roundedRect(ctx, xA, yA, barW, Math.max(2, alturaA), 6);
-
-    // bar B
-    const xB = xGrupo + grupoW * 0.12 + barW + 6;
-    const yB = padTop + areaH - alturaB;
-    const gradB = ctx.createLinearGradient(0, yB, 0, padTop + areaH);
-    gradB.addColorStop(0, shadeColor(corB, 18));
-    gradB.addColorStop(1, corB);
-    ctx.fillStyle = gradB;
-    roundedRect(ctx, xB, yB, barW, Math.max(2, alturaB), 6);
-
-    // value labels (dark for contrast)
-    ctx.fillStyle = "#071025";
-    ctx.font = "11px Segoe UI";
-    if (alturaA > 12) {
-      ctx.fillText(brMoeda(serieA[i]), xA + barW / 2, yA - 6);
-    }
-    if (alturaB > 12) {
-      ctx.fillText(brMoeda(serieB[i]), xB + barW / 2, yB - 6);
-    }
-
-    ctx.fillStyle = "#666";
-    ctx.fillText(label.slice(0, 3), xGrupo + grupoW / 2, padTop + areaH + 14);
-  });
-
-  // legenda estilizada (pill)
-  ctx.textAlign = "left";
-  const legendX = padLeft;
-  const legendY = 8;
-  // A
-  ctx.fillStyle = corA;
-  roundedRect(ctx, legendX, legendY - 6, 10, 10, 3);
-  ctx.fillStyle = "#071025";
-  ctx.fillText(nomeA, legendX + 18, legendY + 2);
-  // B
-  ctx.fillStyle = corB;
-  roundedRect(ctx, legendX + 120, legendY - 6, 10, 10, 3);
-  ctx.fillStyle = "#071025";
-  ctx.fillText(nomeB, legendX + 138, legendY + 2);
-}
-
-// Smooth multi-line chart (spline) with glow and filled area
-function drawSmoothLineChart(
-  canvasId,
-  labels,
-  serieA,
-  serieB,
-  corA,
-  corB,
-  nomeA,
-  nomeB,
-) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const { w, h } = limparCanvas(ctx, canvas);
-
-  const padLeft = 40,
-    padBottom = 36,
-    padTop = 24,
-    padRight = 18;
-  const areaW = w - padLeft - padRight;
-  const areaH = h - padTop - padBottom;
-  const maxVal = Math.max(1, ...serieA, ...serieB);
-
-  // grid
-  ctx.strokeStyle = "rgba(255,255,255,0.04)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const steps = 4;
-  for (let i = 0; i <= steps; i++) {
-    const y = padTop + (areaH * i) / steps;
-    ctx.moveTo(padLeft, y);
-    ctx.lineTo(padLeft + areaW, y);
-  }
-  ctx.stroke();
-
-  // helper to compute point
-  const pointX = (i) => padLeft + (areaW * i) / (labels.length - 1);
-  const pointY = (val) => padTop + areaH - (val / maxVal) * areaH;
-
-  // draw area + line for series
-  function drawSerie(vals, color, fillAlpha) {
-    // build path
-    ctx.beginPath();
-    for (let i = 0; i < vals.length; i++) {
-      const x = pointX(i);
-      const y = pointY(vals[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else {
-        // cubic bezier toward next point
-        const prevX = pointX(i - 1);
-        const prevY = pointY(vals[i - 1]);
-        const cx1 = prevX + (x - prevX) * 0.4;
-        const cy1 = prevY;
-        const cx2 = prevX + (x - prevX) * 0.6;
-        const cy2 = y;
-        ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x, y);
-      }
-    }
-
-    // fill area
-    ctx.lineTo(padLeft + areaW, padTop + areaH);
-    ctx.lineTo(padLeft, padTop + areaH);
-    ctx.closePath();
-    const g = ctx.createLinearGradient(0, padTop, 0, padTop + areaH);
-    g.addColorStop(0, shadeColor(color, 30));
-    g.addColorStop(1, shadeColor(color, 85));
-    ctx.fillStyle = `rgba(${hexToRgb(color)}, ${fillAlpha})`;
-    ctx.fill();
-
-    // stroke line
-    ctx.beginPath();
-    for (let i = 0; i < vals.length; i++) {
-      const x = pointX(i);
-      const y = pointY(vals[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else {
-        const prevX = pointX(i - 1);
-        const prevY = pointY(vals[i - 1]);
-        const cx1 = prevX + (x - prevX) * 0.4;
-        const cy1 = prevY;
-        const cx2 = prevX + (x - prevX) * 0.6;
-        const cy2 = y;
-        ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x, y);
-      }
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    // glow
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 18;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    // markers
-    ctx.fillStyle = color;
-    ctx.strokeStyle = "rgba(0,0,0,0.08)";
-    for (let i = 0; i < vals.length; i++) {
-      const x = pointX(i);
-      const y = pointY(vals[i]);
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-
-  // draw series B behind A for nice overlap
-  drawSerie(serieB, corB, 0.06);
-  drawSerie(serieA, corA, 0.08);
-
-  // x labels
-  ctx.font = "11px Segoe UI";
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  labels.forEach((lab, i) => {
-    ctx.fillText(lab.slice(0, 3), pointX(i), padTop + areaH + 18);
-  });
-
-  // legend
-  ctx.font = "12px Segoe UI";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(nomeA, padLeft + 12, 16);
-  ctx.fillStyle = corA;
-  ctx.beginPath();
-  ctx.arc(padLeft - 4, 10, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(nomeB, padLeft + 120, 16);
-  ctx.fillStyle = corB;
-  ctx.beginPath();
-  ctx.arc(padLeft + 104, 10, 5, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// Composite chart: grouped bars for Receita/Despesa + red saldo line overlay
 function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
-  // Novo gráfico estilizado: áreas suaves para Receitas/Despesas e linha de Saldo
   try {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
 
-    // remove previous handlers if present (avoid duplicate event listeners)
+    // remove listeners e animação anteriores (re-render por resize/aba) para
+    // não duplicar eventos nem deixar dois loops de animação no mesmo canvas
     if (canvas._hg_chartHandlers) {
-      canvas.removeEventListener(
-        "mousemove",
-        canvas._hg_chartHandlers.mousemove,
-      );
-      canvas.removeEventListener(
-        "mouseleave",
-        canvas._hg_chartHandlers.mouseleave,
+      Object.entries(canvas._hg_chartHandlers).forEach(([tipo, fn]) =>
+        canvas.removeEventListener(tipo, fn),
       );
       canvas._hg_chartHandlers = null;
+    }
+    if (canvas._hg_chartAnim && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(canvas._hg_chartAnim);
+      canvas._hg_chartAnim = null;
     }
 
     const { w, h } = limparCanvas(ctx, canvas);
@@ -1831,118 +1673,198 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
     const minVal = Math.min(0, ...all);
     const maxVal = Math.max(1, ...all);
 
-    // layout sempre em largura original (o wrapper dá scroll no mobile):
-    // equivale a responsive:false — o desenho nunca é espremido.
-    const padLeft = 56,
-      padRight = 20,
-      padTop = 24,
-      padBottom = 56;
+    // No celular o gráfico da visão anual cabe na largura da tela (375px): os
+    // paddings, a fonte e os rótulos do eixo Y encolhem para nada ser cortado.
+    // No desktop (canvas largo) tudo mantém as medidas originais.
+    const mobile = ehLayoutMobile();
+    const estreito = w < 480;
+    const padLeft = estreito ? 46 : 56,
+      padRight = estreito ? 12 : 20,
+      padTop = 34, // topo reservado para a legenda das três séries
+      padBottom = estreito ? 40 : 56;
     const areaW = w - padLeft - padRight;
     const areaH = h - padTop - padBottom;
+    const raioPonto = mobile ? 2 : 0; // pointRadius: 2 no celular, 0 no desktop
+    const fonteEixo = estreito ? "10px Segoe UI" : "11px Segoe UI";
 
-    const rotuloEixoY = (valor) => brMoeda(valor);
+    // 12 meses num canvas estreito (375px de tela ≈ 259px de canvas) dariam
+    // ~18px por mês: nesse caso mostra um mês sim, outro não (JAN, MAR, MAI...)
+    // para os rótulos não se encostarem.
+    const espacoMes = areaW / Math.max(1, labels.length - 1);
+    const pularRotuloX = espacoMes < 24 ? 2 : 1;
 
-    // background subtle gradient
-    const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, "#0f1720");
-    bg.addColorStop(1, "#0b1a22");
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, w, h);
+    // Saldo acumulado do ano define a cor do item "Saldo" da legenda.
+    const corSaldoResumo = corSaldoAnual(saldos.reduce((acc, v) => acc + v, 0));
+
+    // Rótulo do eixo Y: moeda completa no desktop; no celular a versão curta
+    // ("12,5k"/"980") para caber no padding esquerdo reduzido.
+    const rotuloEixoY = (valor) => {
+      if (!estreito) return brMoeda(valor);
+      if (Math.abs(valor) >= 1000)
+        return `${(valor / 1000).toFixed(1).replace(".", ",")}k`;
+      return String(Math.round(valor));
+    };
+
+    // fundo do gráfico (mesmo tom escuro usado nos cards do Resumo)
+    const FUNDO_TOPO = "#0f1720";
+    const FUNDO_BASE = "#0b1a22";
 
     // helper coordinate mapping
     const mapX = (i) => padLeft + (areaW * i) / Math.max(1, labels.length - 1);
     const mapY = (v) =>
       padTop + areaH - ((v - minVal) / Math.max(1, maxVal - minVal)) * areaH;
 
-    // grid and Y labels
-    ctx.font = "11px Segoe UI";
-    ctx.textAlign = "right";
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.lineWidth = 1;
-    const steps = 5;
-    for (let i = 0; i <= steps; i++) {
-      const v = minVal + (i * (maxVal - minVal)) / steps;
-      const y = mapY(v);
-      ctx.strokeStyle = "rgba(255,255,255,0.04)";
-      ctx.beginPath();
-      ctx.moveTo(padLeft, y);
-      ctx.lineTo(padLeft + areaW, y);
-      ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,0.72)";
-      ctx.fillText(rotuloEixoY(v), padLeft - 8, y + 4);
-    }
+    // Progresso da animação de entrada: 0 = séries na base, 1 = valores reais.
+    // Só as séries usam mapYSerie — grade, eixos e legenda ficam parados.
+    let anim = 1;
+    const mapYSerie = (v) => mapY(v * anim);
 
-    // smooth area path builder
+    // passos da grade (usados no redraw, que é quem pinta o gráfico)
+    const steps = 5;
+
+    // Caminho suave dos valores (tension 0.4 -> controle a 40%/60% do trecho)
     function buildSmoothPath(values) {
       const path = new Path2D();
       for (let i = 0; i < values.length; i++) {
         const x = mapX(i);
-        const y = mapY(values[i]);
+        const y = mapYSerie(values[i]);
         if (i === 0) path.moveTo(x, y);
         else {
           const px = mapX(i - 1);
-          const py = mapY(values[i - 1]);
-          const cx1 = px + (x - px) * 0.35;
-          const cy1 = py;
-          const cx2 = px + (x - px) * 0.65;
-          const cy2 = y;
-          path.bezierCurveTo(cx1, cy1, cx2, cy2, x, y);
+          const py = mapYSerie(values[i - 1]);
+          path.bezierCurveTo(
+            px + (x - px) * TENSAO_ANUAL,
+            py,
+            x - (x - px) * TENSAO_ANUAL,
+            y,
+            x,
+            y,
+          );
         }
       }
       return path;
     }
 
-    // draw area + line function
-    function drawArea(values, colorHex, alphaFill) {
-      if (!values || values.length === 0) return;
+    // Área preenchida com degradê (rgba(cor, 0.3) -> rgba(cor, 0)) + linha
+    // cheia com borderWidth 3. O degradê começa no topo do canvas e termina em
+    // 300px (FIM_DEGRADE_ANUAL); em telas mais baixas termina no fim do canvas
+    // para a base do preenchimento ficar realmente transparente.
+    function drawArea(values, corLinha, corFillInicio, corFillFim) {
+      if (!values || values.length < 2) return;
       const path = buildSmoothPath(values);
-      // close to baseline
-      const lastX = mapX(values.length - 1);
-      const firstX = mapX(0);
-      const baseY = mapY(0);
+
+      // fecha o preenchimento na linha de base (valor 0)
       const fillPath = new Path2D(path);
-      fillPath.lineTo(lastX, baseY);
-      fillPath.lineTo(firstX, baseY);
+      const baseY = mapY(0);
+      fillPath.lineTo(mapX(values.length - 1), baseY);
+      fillPath.lineTo(mapX(0), baseY);
       fillPath.closePath();
-      const g = ctx.createLinearGradient(0, padTop, 0, padTop + areaH);
-      g.addColorStop(0, `${colorHex}33`);
-      g.addColorStop(1, `${colorHex}05`);
+
+      const g = ctx.createLinearGradient(0, 0, 0, Math.min(h, FIM_DEGRADE_ANUAL));
+      g.addColorStop(0, corFillInicio);
+      g.addColorStop(1, corFillFim);
       ctx.fillStyle = g;
       ctx.fill(fillPath);
 
-      // stroke
-      ctx.strokeStyle = colorHex;
-      ctx.lineWidth = 2.6;
-      ctx.shadowColor = colorHex;
-      ctx.shadowBlur = 10;
+      // stroke da linha
+      ctx.strokeStyle = corLinha;
+      ctx.lineWidth = 3;
+      ctx.shadowColor = corLinha;
+      ctx.shadowBlur = 8;
       ctx.stroke(path);
       ctx.shadowBlur = 0;
+
+      desenharPontos(values, () => corLinha);
     }
 
-    // colors
-    const corReceita = "#4aa3ff"; // blue
-    const corDespesa = "#ff6b3d"; // orange
+    // pointRadius 2 no celular (pontos visíveis no toque) e 0 no desktop
+    function desenharPontos(values, corDoPonto) {
+      if (raioPonto <= 0) return;
+      for (let i = 0; i < values.length; i++) {
+        ctx.fillStyle = corDoPonto(values[i], i);
+        ctx.beginPath();
+        ctx.arc(mapX(i), mapYSerie(values[i]), raioPonto, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
 
-    // draw despesas behind receitas for visual depth
-    drawArea(despesas, corDespesa, 0.12);
-    drawArea(receitas, corReceita, 0.14);
+    // Linha do Saldo: verde (#22c55e) onde o saldo é >= 0 e vermelha (#ef4444)
+    // onde é negativo — cada trecho recebe a cor do seu próprio saldo.
+    function strokeSaldo() {
+      for (let i = 1; i < saldos.length; i++) {
+        const px = mapX(i - 1);
+        const py = mapYSerie(saldos[i - 1]);
+        const x = mapX(i);
+        const y = mapYSerie(saldos[i]);
+        const cor = corSaldoAnual((saldos[i - 1] + saldos[i]) / 2);
+        const seg = new Path2D();
+        seg.moveTo(px, py);
+        seg.bezierCurveTo(
+          px + (x - px) * TENSAO_ANUAL,
+          py,
+          x - (x - px) * TENSAO_ANUAL,
+          y,
+          x,
+          y,
+        );
+        ctx.strokeStyle = cor;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = cor;
+        ctx.shadowBlur = 8;
+        ctx.stroke(seg);
+      }
+      ctx.shadowBlur = 0;
+      desenharPontos(saldos, corSaldoAnual);
+    }
 
-    // saldo line (bold)
-    const saldoPath = buildSmoothPath(saldos);
-    ctx.strokeStyle = "#ff2e2e";
-    ctx.lineWidth = 3;
-    ctx.shadowColor = "#ff6b6b";
-    ctx.shadowBlur = 8;
-    ctx.stroke(saldoPath);
-    ctx.shadowBlur = 0;
+    // Legenda com as cores fixas das três séries (as mesmas das linhas)
+    function drawLegenda() {
+      const y = 16;
+      const itens = [
+        ["Receitas", CORES_ANUAL.receita],
+        ["Despesas", CORES_ANUAL.despesa],
+        ["Saldo", corSaldoResumo],
+      ];
+      // Encolhe fonte/espaçamento apenas se não couber (telas bem estreitas,
+      // ex.: 320px); no desktop/tablet nada muda.
+      let fonte = estreito ? 10 : 11;
+      let gap = estreito ? 10 : 16;
+      const larguraTotal = () => {
+        ctx.font = `${fonte}px Segoe UI`;
+        const textos = itens.reduce(
+          (acc, [nome]) => acc + 12 + ctx.measureText(nome).width,
+          0,
+        );
+        return textos + gap * (itens.length - 1);
+      };
+      while (padLeft + larguraTotal() > w - 2 && fonte > 8) {
+        fonte -= 1;
+        gap = Math.max(4, gap - 2);
+      }
 
-    // x labels (largura original de 600/650px: todos os 12 meses cabem)
-    ctx.font = "11px Segoe UI";
-    ctx.fillStyle = "rgba(255,255,255,0.86)";
-    ctx.textAlign = "center";
-    labels.forEach((lab, i) => {
-      ctx.fillText(lab.slice(0, 3), mapX(i), padTop + areaH + 18);
-    });
+      ctx.font = `${fonte}px Segoe UI`;
+      ctx.textAlign = "left";
+      let x = padLeft;
+      itens.forEach(([nome, cor]) => {
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        ctx.arc(x + 4, y - 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(nome, x + 12, y + 2);
+        x += 12 + ctx.measureText(nome).width + gap;
+      });
+    }
+
+    // rótulos dos meses (12 meses; no celular pode mostrar um a cada dois)
+    function drawRotulosX() {
+      ctx.font = fonteEixo;
+      ctx.fillStyle = "rgba(255,255,255,0.86)";
+      ctx.textAlign = "center";
+      labels.forEach((lab, i) => {
+        if (i % pularRotuloX !== 0) return;
+        ctx.fillText(lab.slice(0, 3), mapX(i), padTop + areaH + 18);
+      });
+    }
 
     // interactive tooltip element (create if missing)
     const tooltipId = `hg_chart_tooltip_${canvasId}`;
@@ -1970,15 +1892,16 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
       const { w: cw, h: ch } = limparCanvas(ctx, canvas);
       // background
       const bg2 = ctx.createLinearGradient(0, 0, 0, ch);
-      bg2.addColorStop(0, "#0f1720");
-      bg2.addColorStop(1, "#0b1a22");
+      bg2.addColorStop(0, FUNDO_TOPO);
+      bg2.addColorStop(1, FUNDO_BASE);
       ctx.fillStyle = bg2;
       ctx.fillRect(0, 0, cw, ch);
 
       // grid + labels
-      ctx.font = "11px Segoe UI";
+      ctx.font = fonteEixo;
       ctx.textAlign = "right";
       ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 1;
       for (let i = 0; i <= steps; i++) {
         const v = minVal + (i * (maxVal - minVal)) / steps;
         const y = mapY(v);
@@ -1988,26 +1911,27 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
         ctx.lineTo(padLeft + areaW, y);
         ctx.stroke();
         ctx.fillStyle = "rgba(255,255,255,0.72)";
-        ctx.fillText(brMoeda(v), padLeft - 8, y + 4);
+        ctx.fillText(rotuloEixoY(v), padLeft - 8, y + 4);
       }
 
-      // areas & saldo
-      drawArea(despesas, corDespesa, 0.12);
-      drawArea(receitas, corReceita, 0.14);
-      ctx.strokeStyle = "#ff2e2e";
-      ctx.lineWidth = 3;
-      ctx.shadowColor = "#ff6b6b";
-      ctx.shadowBlur = 8;
-      ctx.stroke(saldoPath);
-      ctx.shadowBlur = 0;
+      // áreas (Receitas azul / Despesas laranja) + linha de Saldo
+      drawArea(
+        despesas,
+        CORES_ANUAL.despesa,
+        CORES_ANUAL.despesaFillInicio,
+        CORES_ANUAL.despesaFillFim,
+      );
+      drawArea(
+        receitas,
+        CORES_ANUAL.receita,
+        CORES_ANUAL.receitaFillInicio,
+        CORES_ANUAL.receitaFillFim,
+      );
+      strokeSaldo();
 
-      // x labels
-      ctx.font = "11px Segoe UI";
-      ctx.fillStyle = "rgba(255,255,255,0.86)";
-      ctx.textAlign = "center";
-      labels.forEach((lab, i) => {
-        ctx.fillText(lab.slice(0, 3), mapX(i), padTop + areaH + 18);
-      });
+      // legenda + rótulos dos meses
+      drawLegenda();
+      drawRotulosX();
 
       // highlight vertical and markers
       if (highlightIndex >= 0 && highlightIndex < labels.length) {
@@ -2019,63 +1943,195 @@ function drawCompositeBarLineChart(canvasId, labels, receitas, despesas) {
         ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        // marker circles on saldo line
-        const sy = mapY(saldos[highlightIndex]);
-        ctx.fillStyle = "#ff2e2e";
+        // marcador da linha de Saldo (mesma cor do trecho)
+        const sy = mapYSerie(saldos[highlightIndex]);
+        ctx.fillStyle = corSaldoAnual(saldos[highlightIndex]);
         ctx.beginPath();
         ctx.arc(hx, sy, 5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
-    // initial draw
-    redraw(-1);
+    // ---- Animação de entrada (leve: as séries sobem da base) --------------
+    let frameAnim = null;
 
-    // mouse interactivity
-    function onMove(e) {
+    function cancelarAnimacao() {
+      if (frameAnim !== null && typeof cancelAnimationFrame === "function")
+        cancelAnimationFrame(frameAnim);
+      frameAnim = null;
+      canvas._hg_chartAnim = null;
+      anim = 1;
+    }
+
+    function animarEntrada() {
+      const DURACAO = 480; // ms — leve, só na primeira pintura do canvas
+      // A animação é de boas-vindas: roda uma única vez por canvas. Nos
+      // re-renders (resize, troca de ano/mês, volta para a aba) o gráfico é
+      // pintado direto — sem piscar nem atrasar o arraste da janela.
+      if (
+        canvas._hg_chartAnimou ||
+        typeof requestAnimationFrame !== "function" ||
+        prefereMenosMovimento()
+      ) {
+        anim = 1;
+        canvas._hg_chartAnimou = true;
+        redraw(-1);
+        return;
+      }
+      canvas._hg_chartAnimou = true;
+      let inicio = null;
+      anim = 0;
+      const passo = (agora) => {
+        if (inicio === null) inicio = agora;
+        const t = Math.min(1, (agora - inicio) / DURACAO);
+        anim = 1 - Math.pow(1 - t, 3); // ease-out
+        redraw(-1);
+        if (t < 1) {
+          frameAnim = requestAnimationFrame(passo);
+          canvas._hg_chartAnim = frameAnim;
+        } else {
+          anim = 1;
+          frameAnim = null;
+          canvas._hg_chartAnim = null;
+        }
+      };
+      frameAnim = requestAnimationFrame(passo);
+      canvas._hg_chartAnim = frameAnim;
+    }
+
+    // primeira pintura (com animação)
+    animarEntrada();
+
+    // ---- Interação: hover com mouse, toque no celular ---------------------
+    // Pointer Events cobrem mouse, dedo e caneta. Antes existia só mousemove /
+    // mouseleave, então no celular não havia tooltip nenhum.
+    let timerTooltip = null;
+
+    function indicePorX(clientX) {
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      // find nearest index
-      const ratio = (x - padLeft) / areaW;
-      let idx = Math.round(ratio * (labels.length - 1));
-      idx = Math.max(0, Math.min(labels.length - 1, idx));
-      redraw(idx);
+      const ratio = (clientX - rect.left - padLeft) / areaW;
+      const idx = Math.round(ratio * (labels.length - 1));
+      return Math.max(0, Math.min(labels.length - 1, idx));
+    }
 
-      // position tooltip
+    // Posição calculada em coordenadas de viewport (para o tooltip não vazar a
+    // tela — importante em 375px) e convertida de volta para coordenadas de
+    // página, que é o que o tooltip absoluto usa. No toque o tooltip fica acima
+    // do dedo (senão ficaria escondido embaixo dele).
+    function posicionarTooltip(e) {
+      const px = typeof e.pageX === "number" ? e.pageX : e.clientX;
+      const py = typeof e.pageY === "number" ? e.pageY : e.clientY;
+      const cx = typeof e.clientX === "number" ? e.clientX : px;
+      const cy = typeof e.clientY === "number" ? e.clientY : py;
+      const toque = e.pointerType === "touch" || e.pointerType === "pen";
+      const larguraTt = tooltip.offsetWidth || 150;
+      const alturaTt = tooltip.offsetHeight || 64;
+      const larguraTela =
+        (document.documentElement && document.documentElement.clientWidth) || 0;
+      const alturaTela =
+        (document.documentElement && document.documentElement.clientHeight) || 0;
+
+      let viewX = cx + 12;
+      let viewY = toque ? cy - alturaTt - 18 : cy - 12;
+      if (toque && viewY < 8) viewY = cy + 20; // dedo no topo: mostra abaixo
+      if (larguraTela > 0)
+        viewX = Math.min(viewX, larguraTela - larguraTt - 8);
+      if (alturaTela > 0) viewY = Math.min(viewY, alturaTela - alturaTt - 8);
+      viewX = Math.max(8, viewX);
+      viewY = Math.max(8, viewY);
+
+      tooltip.style.left = viewX + (px - cx) + "px";
+      tooltip.style.top = viewY + (py - cy) + "px";
+    }
+
+    function mostrarTooltip(e, idx) {
       const receitaV = receitas[idx] || 0;
       const despesaV = despesas[idx] || 0;
       const saldoV = saldos[idx] || 0;
       tooltip.innerHTML = `<div style="font-weight:600;margin-bottom:6px">${esc(labels[idx])}</div>
         <div>Receita: <b>${brMoeda(receitaV)}</b></div>
         <div>Despesa: <b>${brMoeda(despesaV)}</b></div>
-        <div>Saldo: <b style="color:${saldoV >= 0 ? "#8ef7a9" : "#ff8b8b"}">${brMoeda(saldoV)}</b></div>`;
-      tooltip.style.left = e.pageX + 12 + "px";
-      tooltip.style.top = e.pageY - 12 + "px";
+        <div>Saldo: <b style="color:${corSaldoAnual(saldoV)}">${brMoeda(saldoV)}</b></div>`;
+      posicionarTooltip(e);
       tooltip.style.opacity = "1";
       tooltip.style.transform = "translateY(0) scale(1)";
     }
-    function onLeave() {
+
+    function esconderTooltip() {
       redraw(-1);
       tooltip.style.opacity = "0";
       tooltip.style.transform = "translateY(-6px) scale(0.98)";
     }
 
-    canvas.addEventListener("mousemove", onMove);
-    canvas.addEventListener("mouseleave", onLeave);
-    canvas._hg_chartHandlers = { mousemove: onMove, mouseleave: onLeave };
-  } catch (err) {
-    console.error("Erro em drawCompositeBarLineChart (novo):", err);
-  }
-}
+    function limparTimerTooltip() {
+      if (timerTooltip) clearTimeout(timerTooltip);
+      timerTooltip = null;
+    }
 
-// helper: convert hex to r,g,b string
-function hexToRgb(hex) {
-  const c = hex.replace("#", "");
-  const num = parseInt(c, 16);
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  return `${r},${g},${b}`;
+    // mouse passando por cima ou dedo arrastando sobre o gráfico
+    function onPointerMove(e) {
+      cancelarAnimacao();
+      limparTimerTooltip();
+      const idx = indicePorX(e.clientX);
+      redraw(idx);
+      mostrarTooltip(e, idx);
+    }
+
+    // toque: mostra já no toque (destaca a barra do mês apontado)
+    function onPointerDown(e) {
+      cancelarAnimacao();
+      limparTimerTooltip();
+      const idx = indicePorX(e.clientX);
+      redraw(idx);
+      mostrarTooltip(e, idx);
+    }
+
+    // ao soltar o dedo o tooltip continua por um tempo, para dar leitura
+    function onPointerUp(e) {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      limparTimerTooltip();
+      timerTooltip = setTimeout(() => {
+        timerTooltip = null;
+        esconderTooltip();
+      }, 2500);
+    }
+
+    // Sair com o mouse esconde na hora. Atenção: ao levantar o dedo o navegador
+    // também dispara pointerleave, e isso não pode cortar o tempo de leitura
+    // agendado no pointerup — por isso o toque é tratado à parte.
+    function onPointerLeave(e) {
+      const toque =
+        !!e && (e.pointerType === "touch" || e.pointerType === "pen");
+      if (toque) {
+        if (timerTooltip) return; // o timer do pointerup é quem esconde
+        esconderTooltip();
+        return;
+      }
+      limparTimerTooltip();
+      esconderTooltip();
+    }
+
+    // gesto cancelado (o navegador assumiu a rolagem, por exemplo)
+    function onPointerCancel() {
+      limparTimerTooltip();
+      esconderTooltip();
+    }
+
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("pointercancel", onPointerCancel);
+    canvas._hg_chartHandlers = {
+      pointermove: onPointerMove,
+      pointerdown: onPointerDown,
+      pointerup: onPointerUp,
+      pointerleave: onPointerLeave,
+      pointercancel: onPointerCancel,
+    };
+  } catch (err) {
+    console.error("Erro ao desenhar a visão anual (Receitas x Despesas):", err);
+  }
 }
 
 function drawDonutChart(canvasId, labels, valores) {
@@ -2087,9 +2143,8 @@ function drawDonutChart(canvasId, labels, valores) {
 
   const total = valores.reduce((a, b) => a + b, 0);
 
-  // Layout sempre lado a lado (desktop): o wrapper com scroll garante a
-  // largura original (~600/650px) também no celular, então o donut nunca é
-  // espremido — equivale a responsive:false no Chart.js.
+  // Layout lado a lado (desktop): o wrapper com scroll mantém a largura
+  // original (~650px) também no celular, onde a legenda fica ao lado do donut.
   const LINHA_LEGENDA = 22;
 
   const cx = w * 0.32,
@@ -2163,7 +2218,9 @@ function drawDonutChart(canvasId, labels, valores) {
 
     ctx.fillStyle = corLegenda;
     ctx.textAlign = "left";
-    ctx.fillText(texto, w * 0.62 + 18, ly + 9);
+    // nomes longos de categoria são cortados com "…" para não vazar o canvas
+    const larguraMax = w - (w * 0.62 + 18) - 8;
+    ctx.fillText(encurtarTexto(ctx, texto, larguraMax), w * 0.62 + 18, ly + 9);
     ly += 22;
   });
 }
@@ -2405,6 +2462,20 @@ function renderResumo() {
     receitasPorMes,
     despesasPorMes,
   );
+
+  // A dica de rolagem depende da largura real do desenho (roda depois dos dois
+  // gráficos do Resumo terem sido redesenhados).
+  atualizarDicasScroll();
+}
+
+// A dica "← arraste para ver mais →" (::after do .grafico-scroll-wrapper) só
+// aparece quando o gráfico é realmente mais largo que a área visível: a visão
+// anual passou a caber inteira no celular, então lá ela não é exibida.
+function atualizarDicasScroll() {
+  document.querySelectorAll(".grafico-scroll-wrapper").forEach((wrapper) => {
+    const precisa = wrapper.scrollWidth > wrapper.clientWidth + 2;
+    wrapper.classList.toggle("tem-scroll", precisa);
+  });
 }
 
 document.getElementById("resumoAno").addEventListener("change", renderResumo);

@@ -485,8 +485,9 @@ tbody tr.ultima-parcela:hover {
   .chart-box > canvas { height: 320px; }
 }
 
-/* Mobile (< 768px): gráfico mantém a largura original (~650px) dentro do
-   wrapper com rolagem horizontal — não é espremido nos 375px da tela */
+/* Mobile (< 768px): a visão anual (Resumo) ocupa 100% da largura da tela e o
+   donut de categorias mantém a largura original (~650px) dentro do wrapper com
+   rolagem horizontal — nada é espremido nos 375px da tela */
 @media (max-width: 768px) {
   .grid-2 { grid-template-columns: 1fr; gap: 16px; }
   .chart-box { padding: 12px; }
@@ -496,13 +497,37 @@ tbody tr.ultima-parcela:hover {
     padding: 0 16px;
     width: calc(100% + 32px);
   }
+  /* Altura do gráfico no celular: 280px de container (teto de 320px) com 12px
+     de padding — o canvas recebe 256px de altura útil (280 - 2*12), nunca
+     ultrapassa o max-height: 260px e nunca é espremido/esticado. */
+  #graficoContainer,
+  .chart-container,
   .grafico-canvas-container {
+    height: 280px;
+    max-height: 320px;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  /* Visão anual (Resumo): cabe inteira na largura do celular (375px), sem
+     precisar arrastar. */
+  #graficoContainer {
+    min-width: 0;
+    width: 100%;
+  }
+  /* Demais gráficos (ex.: donut de categorias, cuja legenda fica ao lado)
+     mantêm a largura original do desktop, com rolagem horizontal. */
+  .grafico-canvas-container:not(#graficoContainer) {
     min-width: 650px;
     width: 650px;
-    height: 340px;
   }
-  /* Indica que tem scroll */
-  .grafico-scroll-wrapper::after {
+  canvas {
+    /* sem !important: nada mais define max-height no canvas, e o projeto nao
+       usa !important (ver tools/verificar_css.js) */
+    max-height: 260px;
+  }
+  /* Indica que tem scroll (a classe .tem-scroll é aplicada pelo JS somente
+     quando o conteúdo realmente é mais largo que a área visível) */
+  .grafico-scroll-wrapper.tem-scroll::after {
     content: '← arraste para ver mais →';
     display: block;
     text-align: center;
