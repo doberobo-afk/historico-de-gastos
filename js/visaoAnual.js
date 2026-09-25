@@ -11,7 +11,10 @@
   // este objeto por série/mês e chama recalcularAnual().
   const DATOS = {
     anio: 2026,
-    meses: ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"],
+    meses: [
+      "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+      "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+    ],
     receita: [
       6114.31, 5971.37, 6691.03, 6691.03, 7157.66, 7150,
       7150, 7150, 8150, 8150, 8150, 8150,
@@ -40,6 +43,11 @@
 
   function suma(arr) {
     return arr.reduce((acc, x) => acc + x, 0);
+  }
+
+  // Suma anual de una serie (usada por quien necesite el total del año)
+  function totalSerie(arr) {
+    return suma(arr);
   }
 
   // Cálculos automáticos (nunca valores fixos):
@@ -74,7 +82,7 @@
     const rgb = [0, 1, 2].map((k) =>
       Math.round(rI[k] + (gI[k] - rI[k]) * t),
     );
-    return `rgb(${rgb[0]} ${rgb[1]} ${rgb[2]})`;
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
   }
 
   // Saldo: próximo de cero -> amarelo; negativo -> vermelho; positivo -> verde
@@ -90,35 +98,34 @@
     const D = calcular();
     const meses = DATOS.meses;
 
-    const td = (html, cls, style) =>
-      `<td class="${cls}"${style ? ` style="${style}"` : ""}>${html}</td>`;
-    const th = (html, cls) => `<th class="${cls}">${html}</th>`;
+    const td = (html, cls, style, attrs = "") =>
+      `<td class="${cls}"${style ? ` style="${style}"` : ""}${attrs}>${html}</td>`;
+    const th = (html, cls, attrs = "") =>
+      `<th class="${cls}"${attrs}>${html}</th>`;
 
-    // Fila genérica: etiqueta + 12 meses + columna TOTAL. `clase` dá o fundo a
-    // toda a fila (incluida a etiqueta fixa). `getCelda` sobre-escribe as celdas
-    // dos meses (fondo por valor: gastos variáveis/saldo).
+    // Fila genérica: etiqueta + 12 meses (como no print, sem coluna de total).
+    // `clase` dá o fundo a toda a fila (incluida a etiqueta fixa). `getCelda`
+    // sobre-escreve as celdas dos meses (fondo por valor: variáveis/saldo).
     const fila = (label, clase, valores, getCelda) => {
-      const mes = getCelda
+      const celdas = getCelda
         ? valores.map((v, i) => getCelda(v, i)).join("")
         : valores.map((v) => td(brl(v), `va-cel ${clase}`)).join("");
-      return (
-        `<tr>` +
-        td(label, `va-etiqueta ${clase}`) +
-        mes +
-        td(brl(suma(valores)), `va-total ${clase}`) +
-        `</tr>`
-      );
+      return `<tr>` + td(label, `va-etiqueta ${clase}`) + celdas + `</tr>`;
     };
 
     let htmlRows = "";
-    // Cabecera ANO 2026 (fila combinada) + meses
+    // Print do Excel: 1ª linha "ANO | 2026" (cinza escuro) e 2ª linha com os
+    // meses (fundo preto, texto branco) — sem coluna de total.
     htmlRows +=
-      `<tr><td class="va-ano" colspan="${meses.length + 2}">ANO ${DATOS.anio}</td></tr>`;
-    htmlRows += `<tr>${th("", "va-hdr va-corner")}`;
+      `<tr>` +
+      td("ANO", "va-rotulo-ano") +
+      td(String(DATOS.anio), "va-ano", null, ` colspan="${meses.length}"`) +
+      `</tr>`;
+    htmlRows += `<tr>${th("", "va-mes va-corner")}`;
     meses.forEach((m) => {
-      htmlRows += th(m, "va-hdr");
+      htmlRows += th(m, "va-mes");
     });
-    htmlRows += `${th("TOTAL", "va-hdr")}</tr>`;
+    htmlRows += `</tr>`;
 
     // Filas
     htmlRows += fila("RECEITA", "va-receita", D.RECEITA);
@@ -152,6 +159,7 @@
     DATOS,
     calcular,
     brl,
+    totalSerie,
     colorVariavel,
     claseSaldo,
     render,

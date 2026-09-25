@@ -412,21 +412,23 @@ body:not(.dark-theme) .actions-col button:hover { background: rgba(0, 0, 0, 0.05
   white-space: nowrap;
 }
 #tabelaAnualExcel td { text-align: right; }
-/* primeira columna (etiquetas + esquina) fijada a la izquierda */
-#tabelaAnualExcel tr > :first-child:not(.va-ano) {
+/* primeira columna (etiquetas + esquina + ANO) fijada a la izquierda */
+#tabelaAnualExcel tr > :first-child {
   position: sticky;
   left: 0;
-  z-index: 2;
+  z-index: 3;
   min-width: 150px;
   text-align: left;
 }
-/* cabecera */
+#tabelaAnualExcel .va-rotulo-ano { text-align: center; }
+/* cabecera: 1ª linha "ANO | 2026" (cinza escuro) e meses em preto */
+#tabelaAnualExcel .va-rotulo-ano,
 #tabelaAnualExcel .va-ano {
   background: #3f3f46; color: #fff;
-  text-align: center; font-weight: 700; font-size: 15px;
+  font-weight: 700; text-align: center; font-size: 15px;
 }
-#tabelaAnualExcel .va-hdr {
-  background: #52525b; color: #fff; font-weight: 600; text-align: center;
+#tabelaAnualExcel .va-mes {
+  background: #000; color: #fff; font-weight: 700; text-align: center;
 }
 #tabelaAnualExcel .va-corner { min-width: 150px; }
 /* filas: mesmo fondo em toda a fila (incluida a etiqueta fixa) */

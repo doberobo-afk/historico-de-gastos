@@ -72,12 +72,13 @@ assert(api.va.claseSaldo(-74.02) === "va-saldo-cero", "saldo próximo de cero ->
 
 console.log("4) HTML generado (#tabelaAnualExcel)");
 const h = capture.innerHTML;
-assert(/ANO 2026/.test(h), "cabecera ANO 2026");
-assert(/colspan="14"/.test(h), "fila ANO 2026 combinada (1 etiqueta + 12 meses + total)");
+assert(/<td class="va-rotulo-ano">ANO<\/td>/.test(h), "1ª línea: rótulo ANO (cinza escuro)");
+assert(/class="va-ano" colspan="12">2026</.test(h), "1ª línea: 2026 combinando los 12 meses");
 const ths = (h.match(/<th/g) || []).length;
-assert(ths === 14, `14 <th> en la cabecera de meses (esquina + 12 meses + TOTAL), hay ${ths}`);
+assert(ths === 13, `13 <th> en la línea de meses (esquina + 12 meses), hay ${ths}`);
 const trs = (h.match(/<tr/g) || []).length;
 assert(trs === 8, `8 filas (ANO + meses + 6 líneas), hay ${trs}`);
+assert(!/>TOTAL</.test(h), "sin columna TOTAL (como en el print)");
 assert(/R\$ 10\.727,47/.test(h), "ENE: DESPESA TOTAL R$ 10.727,47 en la tabla");
 assert(/-R\$ 4\.613,16/.test(h), "ENE: SALDO -R$ 4.613,16 en la tabla");
 assert(/va-receita/.test(h) && /va-parcelados/.test(h) && /va-fixos/.test(h), "filas RECEITA/PARCELADOS/FIXOS con su clase");
@@ -86,10 +87,13 @@ assert(/class="va-cel va-saldo-neg"/.test(h), "celdas de saldo negativo");
 assert(/class="va-cel va-saldo-cero"/.test(h), "celdas de saldo próximo de cero (amarelo)");
 assert(/style="background:#fca5a5"/.test(h), "gastos variáveis: fondo por valor (vermelho)");
 assert(/style="background:#86efac"/.test(h), "gastos variáveis: fondo por valor (verde)");
-const mesesCabecera = ["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+const mesesCabecera = [
+  "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+  "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+];
 assert(
   mesesCabecera.every((m) => h.includes(">" + m + "</th>")),
-  "12 encabezados de mes (JAN..DEZ)",
+  "12 encabezados de mes por extenso (JANEIRO..DEZEMBRO)",
 );
 
 console.log("5) recalcularAnual() re-rendera");

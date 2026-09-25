@@ -36,8 +36,9 @@ const DINAMICAS = [
   "sincronizando",
   "ultima-parcela",
   // classes de la tabla "Visão Anual" (#tabelaAnualExcel) aplicadas por js/visaoAnual.js
+  "va-rotulo-ano",
   "va-ano",
-  "va-hdr",
+  "va-mes",
   "va-corner",
   "va-receita",
   "va-parcelados",

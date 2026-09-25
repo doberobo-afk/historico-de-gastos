@@ -8,7 +8,7 @@
 // Observação: o registro deste SW está temporariamente desativado em
 // js/app.js (unregister automático) até a migração para Supabase estabilizar.
 // ==========================================================================
-const VERSAO = "hg-v4";
+const VERSAO = "hg-v5";
 const CACHE = `controle-financeiro-${VERSAO}`;
 
 const SHELL = [
